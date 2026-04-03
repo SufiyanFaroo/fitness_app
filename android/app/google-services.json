@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "732161898983",
+    "project_id": "fitquest-e4d3c",
+    "storage_bucket": "fitquest-e4d3c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:732161898983:android:06e5f78eb3fa3a966c6542",
+        "android_client_info": {
+          "package_name": "com.example.fitness_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "732161898983-vupoa86dq8vq2itampj46hbolr4a81mn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.fitness_app",
+            "certificate_hash": "20fcd60b2bd13587227b26ed32bae45b500b28cb"
+          }
+        },
+        {
+          "client_id": "732161898983-l56tvlupk7393i69rck1prhs9imlb1ao.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJ45g4tlm12jF6yN2Ua9rK3m07-lVXJKI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "732161898983-ksts5tbpl2cauirki0mlft227ctg4ivd.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "732161898983-12vje12dorp55peim0dotlf1gs05i6tr.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.fitnessApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

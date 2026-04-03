@@ -1,0 +1,13 @@
+# This file configures the analyzer, which statically analyzes Dart code to
+# check for errors, warnings, and lints.
+
+linter:
+  # The lint rules applied to this project can be customized in the
+  # section below. A list of all available lints and their documentation 
+  # is published at https://dart.dev/lints.
+  rules:
+analyzer:
+  errors:
+    dead_code: ignore
+    # avoid_print: false
+    # prefer_single_quotes: true
