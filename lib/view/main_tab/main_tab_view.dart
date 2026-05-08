@@ -27,7 +27,10 @@ class MainTabView extends StatefulWidget {
 }
 
 class _MainTabViewState extends State<MainTabView> {
-  final FitnessRepository _repo = FitnessRepository(); // Repository Instance
+  // Har workout ki live progress track karne ke liye
+  Map<String, double> _liveWorkoutProgress = {};
+  final FitnessRepository _repo = FitnessRepository();
+  // Repository Instance
   int selectedIndex = 0;
   String selectedPeriod = "Weekly";
   // 1. Class level par variable (build method se bahar)
@@ -729,73 +732,75 @@ class _MainTabViewState extends State<MainTabView> {
 
   // --- Latest Workout List (Connected with Firestore & Local Storage) ---
   Widget _buildLatestWorkoutList(bool isDark) {
+    // Professional Static Data for Fallback
+    final List<Map<String, dynamic>> defaultWorkouts = [
+      {
+        'title': "Fullbody Workout",
+        'kcal': 180,
+        'mins': 20,
+        'asset': AppAssets.Fullbody_Workout,
+      },
+      {
+        'title': "Lowerbody Workout",
+        'kcal': 200,
+        'mins': 30,
+        'asset': AppAssets.Lowerbody_Workout,
+      },
+      {
+        'title': "Ab Workout",
+        'kcal': 150,
+        'mins': 15,
+        'asset': AppAssets.Ab_Workout,
+      },
+    ];
+
     return StreamBuilder<QuerySnapshot>(
       stream: _repo.getLatestWorkoutsStream(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          // Fallback UI jab tak database load ho raha ho
+        // 1. Agar data aa gaya hai aur khali nahi hai
+        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+          var workoutDocs = snapshot.data!.docs;
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
-              children: [
-                _workoutItemTile(
+              children: workoutDocs.map((doc) {
+                var data = doc.data() as Map<String, dynamic>;
+                String title = data['title'] ?? "Workout";
+                double progress = (data['progress'] ?? 0.0).toDouble();
+
+                // Find static info for image and calories
+                var staticInfo = defaultWorkouts.firstWhere(
+                  (w) => w['title'] == title,
+                  orElse: () => defaultWorkouts[0],
+                );
+
+                return _workoutItemTile(
                   isDark,
-                  "Fullbody Workout",
-                  "180 Calories Burn | 20mins",
-                  0.0,
-                  AppAssets.Fullbody_Workout,
-                ),
-                _workoutItemTile(
-                  isDark,
-                  "Lowerbody Workout",
-                  "200 Calories Burn | 30mins",
-                  0.0,
-                  AppAssets.Lowerbody_Workout,
-                ),
-                _workoutItemTile(
-                  isDark,
-                  "Ab Workout",
-                  "180 Calories Burn | 20mins",
-                  0.0,
-                  AppAssets.Ab_Workout,
-                ),
-              ],
+                  title,
+                  "${staticInfo['kcal']} Calories Burn | ${staticInfo['mins']}mins",
+                  _liveWorkoutProgress[title] ?? progress,
+                  staticInfo['asset'],
+                  staticInfo['kcal'],
+                  staticInfo['mins'],
+                );
+              }).toList(),
             ),
           );
         }
 
-        // Background caching
-        _repo.cacheWorkoutsLocally(snapshot.data!.docs);
-
-        var workoutDocs = snapshot.data!.docs;
-
+        // 2. Agar Loading ho rahi hai ya data nahi mila (Circle ki bajaye static list dikhayen)
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
-            children: workoutDocs.map((doc) {
-              var data = doc.data() as Map<String, dynamic>;
-
-              // Firebase se data nikalna
-              String title = data['title'] ?? "Workout";
-              String kcal = data['kcal'] ?? "0";
-              String mins = data['mins'] ?? "0";
-              double progress = (data['progress'] ?? 0.0).toDouble();
-
-              // --- 1. Sahi Image Logic (No design change) ---
-              String imageAsset = AppAssets.Fullbody_Workout; // Default
-              if (title.toLowerCase().contains("lower")) {
-                imageAsset = AppAssets.Lowerbody_Workout;
-              } else if (title.toLowerCase().contains("ab")) {
-                imageAsset = AppAssets.Ab_Workout;
-              }
-
-              // --- 2. Tile Return ---
+            children: defaultWorkouts.map((w) {
               return _workoutItemTile(
                 isDark,
-                title,
-                "$kcal Calories Burn | ${mins}mins",
-                progress, // Ye progress ab Timer ke zariye automatically fill hogi
-                imageAsset, // Sahi image assets jo aapne set ki hain
+                w['title'],
+                "${w['kcal']} Calories Burn | ${w['mins']}mins",
+                _liveWorkoutProgress[w['title']] ?? 0.0,
+                w['asset'],
+                w['kcal'],
+                w['mins'],
               );
             }).toList(),
           ),
@@ -1009,17 +1014,15 @@ class _MainTabViewState extends State<MainTabView> {
           .doc(uid)
           .snapshots(),
       builder: (context, snapshot) {
-        // Default values agar data fetch na ho raha ho
-        String bpm = "78";
+        int bpmValue = 78; // Default value
         String lastSeen = "Just now";
 
         if (snapshot.hasData && snapshot.data!.exists) {
           var data = snapshot.data!.data() as Map<String, dynamic>;
-          bpm = data['heart_rate']?.toString() ?? "78";
+          bpmValue = int.tryParse(data['heart_rate']?.toString() ?? "78") ?? 78;
           lastSeen = data['heart_rate_time'] ?? "3 mins ago";
 
-          // --- Local Storage Sync ---
-          _saveHeartRateLocally(bpm, lastSeen);
+          _saveHeartRateLocally(bpmValue.toString(), lastSeen);
         }
 
         return Container(
@@ -1030,25 +1033,47 @@ class _MainTabViewState extends State<MainTabView> {
                 ? Colors.white.withValues(alpha: 0.05)
                 : AppColors.secondaryColor2.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(20),
+            // 🔥 Added soft glow for premium look
+            boxShadow: [
+              if (!isDark)
+                BoxShadow(
+                  color: const Color(0xffC58BF2).withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Heart Rate',
                 style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black,
+                  color: Colors.grey,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              Text(
-                '$bpm BPM', // Dynamic BPM
-                style: const TextStyle(
-                  color: Color(0xffC58BF2),
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  Text(
+                    '$bpmValue', // Dynamic BPM
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Text(
+                    'BPM',
+                    style: TextStyle(
+                      color: Color(0xffC58BF2),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
               Stack(
@@ -1058,13 +1083,10 @@ class _MainTabViewState extends State<MainTabView> {
                     height: 50,
                     width: double.infinity,
                     child: Image.asset(
-                      AppAssets
-                          .Main_Tab_view_HeartRate, // Assets.dart se use karein
+                      AppAssets.Main_Tab_view_HeartRate,
                       fit: BoxFit.cover,
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.8)
-                          : null,
-                      colorBlendMode: isDark ? BlendMode.modulate : null,
+                      // 🔥 Wave animation effect colors
+                      color: const Color(0xFF92A3FD).withOpacity(0.8),
                     ),
                   ),
                   Positioned(
@@ -1082,12 +1104,20 @@ class _MainTabViewState extends State<MainTabView> {
                               colors: [Color(0xff92A3FD), Color(0xff9DCEFF)],
                             ),
                             borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xff92A3FD).withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
                           child: Text(
-                            lastSeen, // Dynamic Time
+                            lastSeen,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 10,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
@@ -1115,8 +1145,6 @@ class _MainTabViewState extends State<MainTabView> {
     await prefs.setString('local_bpm_time', time);
   }
 
-  // --- 1. Water Intake Card (With Dotted Timeline) ---
-
   // --- 1. Water Intake Card (Connected with Firestore) ---
   Widget _buildWaterCard(bool isDark) {
     String uid = FirebaseAuth.instance.currentUser?.uid ?? "";
@@ -1127,23 +1155,29 @@ class _MainTabViewState extends State<MainTabView> {
           .doc(uid)
           .snapshots(),
       builder: (context, snapshot) {
-        // Fallback static values
-        String totalWater = "0 Liters";
+        String totalWater = "0.0 Liters";
         double progressLevel = 0.0;
+        const double dailyGoal =
+            4.0; // Isay aap user profile se bhi le sakte hain
 
         if (snapshot.hasData && snapshot.data!.exists) {
           var data = snapshot.data!.data() as Map<String, dynamic>;
 
-          // Firebase se data nikalna
-          totalWater = data['water_intake'] ?? "0 Liters";
+          // 🔥 Safe Parsing: Regex use kiya taake sirf number nikle
+          String rawWater = data['water_intake']?.toString() ?? "0";
+          double consumed =
+              double.tryParse(rawWater.replaceAll(RegExp(r'[^0-9.]'), '')) ??
+              0.0;
 
-          // Progress Level Calculation (Total height 270 hai)
-          // Misal ke taur par agar goal 4L hai: (Current / 4) * 270
-          double consumed = double.tryParse(totalWater.split(' ')[0]) ?? 0.0;
-          progressLevel = (consumed / 4.0) * 270.0;
-          if (progressLevel > 270) progressLevel = 270; // Max height limit
+          totalWater = "${consumed.toStringAsFixed(1)} Liters";
 
-          // Data ko offline use ke liye local save karna
+          // 🔥 Calculation: Total height 270 hai
+          // Formula: (Consumed / Goal) * MaxHeight
+          progressLevel = (consumed / dailyGoal) * 270.0;
+
+          // Bar ko 270 se upar nahi jane dena
+          if (progressLevel > 270) progressLevel = 270;
+
           _saveWaterLocally(totalWater);
         }
 
@@ -1155,11 +1189,11 @@ class _MainTabViewState extends State<MainTabView> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _verticalProgressUI(
-                isDark,
-                progressLevel,
-              ), // Dynamic Height Pass ki
+              // 🔥 Vertical Bar with Animation
+              _verticalProgressUI(isDark, progressLevel),
+
               const SizedBox(width: 12),
+
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1174,7 +1208,7 @@ class _MainTabViewState extends State<MainTabView> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      totalWater, // Dynamic Liters from Firebase
+                      totalWater,
                       style: const TextStyle(
                         color: Color(0xffC58BF2),
                         fontSize: 14,
@@ -1187,7 +1221,9 @@ class _MainTabViewState extends State<MainTabView> {
                       style: TextStyle(fontSize: 10, color: Colors.grey),
                     ),
                     const SizedBox(height: 15),
-                    // Logs Placeholder
+
+                    // 🔥 Professional Logs (Timeline)
+                    // Inhein aap Firebase se dynamic bhi kar sakte hain
                     _buildSmallLog("6am - 8am", "600ml", isLast: false),
                     _buildSmallLog("9am - 11am", "500ml", isLast: false),
                     _buildSmallLog("11am - 2pm", "1000ml", isLast: false),
@@ -1317,8 +1353,6 @@ class _MainTabViewState extends State<MainTabView> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('local_sleep_duration', duration);
   }
-
-  // --- 3. Calories Card (Circular Indicator) ---
 
   // --- Calories Card (Connected with Firestore & Local Storage) ---
   Widget _buildCaloriesCard(bool isDark) {
@@ -1810,39 +1844,29 @@ class _MainTabViewState extends State<MainTabView> {
   }
   // Individual Workout Card
 
+  // 1. Updated Tile Widget (Added kcal and mins)
   Widget _workoutItemTile(
     bool isDark,
     String title,
     String subtitle,
     double progress,
     String image,
+    int totalKcal, // 🔥 Naya Parameter
+    int totalMins, // 🔥 Naya Parameter
   ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 15),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
+      decoration: _cardDecoration(isDark), // Design safe hai
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => _startWorkoutLogic(title, progress), // Alag logic function
+        // 🔥 Error fixed: Ab 4 arguments pass ho rahe hain
+        onTap: () => _startWorkoutLogic(title, progress, totalKcal, totalMins),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // 🖼️ 1. Premium Image Circle with Gradient
               _buildWorkoutImage(image),
-
               const SizedBox(width: 15),
-
-              // 📝 2. Details Section
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1864,16 +1888,12 @@ class _MainTabViewState extends State<MainTabView> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
-                    // 📊 3. Smooth Animated Progress Bar
+                    // 📊 Bar ab yahan real-time update hogi
                     _buildProgressBar(progress, isDark),
                   ],
                 ),
               ),
-
               const SizedBox(width: 10),
-
-              // ➡️ 4. Modern Action Icon
               _buildTrailingAction(),
             ],
           ),
@@ -1882,29 +1902,136 @@ class _MainTabViewState extends State<MainTabView> {
     );
   }
 
-  // 🔥 Professional Start Logic (Safe from duplicate timers)
-  void _startWorkoutLogic(String title, double currentProgress) {
-    HapticFeedback.mediumImpact(); // Premium tactile feel
+  // 2. 🔥 Professional Timer Logic (English Messages + Real-time Fill)
+  void _startWorkoutLogic(
+    String title,
+    double currentProgress,
+    int kcal,
+    int mins,
+  ) {
+    HapticFeedback.mediumImpact();
 
     if (currentProgress >= 1.0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("$title Great job! You’ve already finished this. 🌟"),
-        ),
-      );
+      _showRestartDialog(title, kcal, mins);
       return;
     }
 
-    // Yahan aap apna Timer logic ya Navigation logic dal sakte hain
+    // English Status Message
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        behavior: SnackBarBehavior.floating,
+        content: Text("⚡ $title started. Duration: $mins mins"),
         backgroundColor: const Color(0xFF92A3FD),
-        content: Text("$title shuru ho gaya! ⚡"),
+        behavior: SnackBarBehavior.floating,
       ),
     );
 
-    // Tip: Real app mein Timer hamesha detail page par hota hai, list par nahi.
+    // Initial value set karein
+    _liveWorkoutProgress[title] = currentProgress;
+
+    // 🔥 Logic: Har 1 second baad kitni progress barhni chahiye?
+    // Formula: 1.0 (full bar) / (minutes * 60 seconds)
+    double step = 1.0 / (mins * 60);
+
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() {
+        // Progress ko har second barhayen
+        _liveWorkoutProgress[title] =
+            (_liveWorkoutProgress[title] ?? 0.0) + step;
+      });
+
+      // Jab bar full ho jaye
+      if (_liveWorkoutProgress[title]! >= 1.0) {
+        _liveWorkoutProgress[title] = 1.0;
+        timer.cancel();
+
+        // Database update
+        _repo.updateWorkoutProgress(title, 1.0, kcal, mins);
+        _showCompletionMessage(title);
+      } else {
+        // Background Sync: Har 1 minute baad database update karein
+        if ((timer.tick % 60) == 0) {
+          _repo.updateWorkoutProgress(
+            title,
+            _liveWorkoutProgress[title]!,
+            kcal,
+            mins,
+          );
+        }
+      }
+    });
+  }
+
+  void _showCompletionMessage(String title) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("🎉 Outstanding! You've completed your $title."),
+        backgroundColor: const Color(0xFF42D3A5),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+  // 🔥 Professional Start Logic (Safe from duplicate timers)
+  // void _startWorkoutLogic(String title, double currentProgress) {
+  //   HapticFeedback.mediumImpact(); // Premium tactile feel
+
+  //   if (currentProgress >= 1.0) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text("$title Great job! You’ve already finished this. 🌟"),
+  //       ),
+  //     );
+  //     return;
+  //   }
+
+  //   // Yahan aap apna Timer logic ya Navigation logic dal sakte hain
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     SnackBar(
+  //       behavior: SnackBarBehavior.floating,
+  //       backgroundColor: const Color(0xFF92A3FD),
+  //       content: Text("$title shuru ho gaya! ⚡"),
+  //     ),
+  //   );
+
+  //   // Tip: Real app mein Timer hamesha detail page par hota hai, list par nahi.
+  // }
+
+  // 🔥 Ye function add karein taake error khatam ho jaye
+  void _showRestartDialog(String title, int kcal, int mins) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          "Workout Completed",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          "You've already finished the $title. Do you want to challenge yourself again?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("NOT NOW", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF92A3FD),
+              shape: StadiumBorder(),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              _startWorkoutLogic(title, 0.0, kcal, mins);
+            },
+            child: Text("RESTART", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildProgressBar(double progress, bool isDark) {

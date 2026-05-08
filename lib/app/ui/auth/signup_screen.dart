@@ -6,6 +6,7 @@ import 'package:fitness_app/core/utils/app_assets.dart';
 import 'package:fitness_app/core/utils/theme_provider.dart';
 import 'package:fitness_app/core/widgets/custom_button.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 // Screens & Utils
@@ -74,41 +75,101 @@ class _SignupScreenState extends State<SignupScreen> {
     if (_formKey.currentState!.validate() && _isAccepted) {
       setState(() => _isLoading = true);
       try {
-        // Service se user create kiya
+        // 1. Create User
         UserCredential userCredential = await _authService.registerWithEmail(
           _emailController.text.trim().toLowerCase(),
           _passwordController.text.trim(),
         );
 
-        if (userCredential.user != null) {
-          // Data save karne ke liye service call ki
+        User? user = userCredential.user;
+
+        if (user != null) {
+          // 2. 🔥 Send Verification Email
+          await user.sendEmailVerification();
+
+          // 3. Save initial data
           await _authService.saveInitialUserData(
-            user: userCredential.user!,
+            user: user,
             name: _nameController.text.trim(),
             phone: _phoneController.text.trim(),
           );
 
+          // 4. 🔥 Show Instruction Dialog
           if (mounted) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const ProfileCompletionScreen(),
-              ),
-            );
+            _showVerificationDialog(user.email ?? "");
           }
         }
       } on FirebaseAuthException catch (e) {
         _showErrorSnackBar(
           e.code == 'email-already-in-use'
-              ? "This email is already registered. Please Login."
+              ? "This email is already registered. Please login."
               : e.message ?? "Registration Failed",
         );
       } catch (e) {
-        _showErrorSnackBar("An unexpected error occurred: $e");
+        _showErrorSnackBar("An error occurred: $e");
       } finally {
         if (mounted) setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _showVerificationDialog(String email) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // User must interact with buttons
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Icon(
+          Icons.mark_email_read_outlined,
+          color: Color(0xFFC58BF2),
+          size: 50,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Verify Your Email",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            const SizedBox(height: 15),
+            Text(
+              "A verification link has been sent to:\n$email",
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 15),
+            const Text(
+              "Please check your inbox (and spam folder) and click the link to activate your account.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          Center(
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF92A3FD),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(horizontal: 30),
+              ),
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                );
+              },
+              child: const Text(
+                "CONTINUE TO LOGIN",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ),
+    );
   }
 
   // Google & Facebook handlers bhi service use kareinge
@@ -176,6 +237,7 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     var themeProvider = Provider.of<ThemeProvider>(context);
     bool isDark = themeProvider.themeMode == ThemeMode.dark;
@@ -186,9 +248,13 @@ class _SignupScreenState extends State<SignupScreen> {
         backgroundColor: isDark ? const Color(0xFF1D1B20) : AppColors.white,
         body: SafeArea(
           child: SingleChildScrollView(
+            // 🔥 Premium Feel: Added bouncing scroll physics
+            physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 30),
             child: Form(
               key: _formKey,
+              // 🔥 Professional UX: Auto-validate after the user interacts
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: Column(
                 children: [
                   const SizedBox(height: 40),
@@ -216,51 +282,62 @@ class _SignupScreenState extends State<SignupScreen> {
                         return "Full Name is required";
                       if (val.trim().length < 3)
                         return "Name must be at least 3 characters";
+                      // Regex for alphabets only
+                      if (!RegExp(r'^[a-z A-Z]+$').hasMatch(val))
+                        return "Enter a valid name";
                       return null;
                     },
                   ),
                   const SizedBox(height: 15),
 
-                  // 2. Phone Number Field
+                  // 2. Phone Number Field (Strict Professional Validation)
                   _buildField(
                     isDark,
                     _phoneController,
-                    "Phone Number",
+                    "+923001234567",
                     Icons.phone_outlined,
                     type: TextInputType.phone,
+                    // 🔥 Added formatters to ensure only numbers and '+' are typed
+                    formatters: [
+                      // Sirf numbers aur '+' allow karega
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9+]')),
+                      // Maximum 13 characters (e.g. +923001234567)
+                      LengthLimitingTextInputFormatter(13),
+                    ],
                     validator: (val) {
                       if (val == null || val.isEmpty)
                         return "Phone number is required";
-                      if (!RegExp(r'^[0-9]+$').hasMatch(val))
-                        return "Enter numbers only";
-                      if (val.length < 10)
-                        return "Enter a valid 10-11 digit number";
+                      // 🔥 Must start with + and have 10-12 digits
+                      if (!RegExp(r'^\+[0-9]{10,12}$').hasMatch(val)) {
+                        return "Start with + (e.g. +923001234567)";
+                      }
                       return null;
                     },
                   ),
                   const SizedBox(height: 15),
 
-                  // 3. Email Field
+                  // 3. Email Field (Strict Verification Logic)
                   _buildField(
                     isDark,
                     _emailController,
-                    "Email",
+                    "Email Address",
                     Icons.email_outlined,
                     type: TextInputType.emailAddress,
                     validator: (val) {
                       if (val == null || val.isEmpty)
                         return "Email is required";
+                      // 🔥 Professional Email Regex
                       final bool emailValid = RegExp(
-                        r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
-                      ).hasMatch(val);
+                        r"^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]+",
+                      ).hasMatch(val.trim());
                       if (!emailValid)
-                        return "Please enter a valid email address";
+                        return "Invalid email format (e.g. name@email.com)";
                       return null;
                     },
                   ),
                   const SizedBox(height: 15),
 
-                  // 4. Password Field
+                  // 4. Password Field (Security Best Practices)
                   _buildField(
                     isDark,
                     _passwordController,
@@ -270,12 +347,12 @@ class _SignupScreenState extends State<SignupScreen> {
                     validator: (val) {
                       if (val == null || val.isEmpty)
                         return "Password is required";
-                      if (val.length < 8)
-                        return "Password must be at least 8 characters";
-                      if (!RegExp(r'[A-Z]').hasMatch(val))
-                        return "Add at least one uppercase letter";
-                      if (!RegExp(r'[0-9]').hasMatch(val))
-                        return "Add at least one number";
+                      if (val.length < 8) return "Min 8 characters required";
+                      if (!RegExp(
+                        r'^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9]).{8,}$',
+                      ).hasMatch(val)) {
+                        return "Must include Uppercase, Lowercase & Number";
+                      }
                       return null;
                     },
                   ),
@@ -284,27 +361,19 @@ class _SignupScreenState extends State<SignupScreen> {
                   _buildCheckboxSection(),
                   const SizedBox(height: 40),
 
-                  // 5. Register Button
+                  // 5. Register Button with Loading State
                   CustomButton(
                     text: "Register",
                     isLoading: _isLoading,
                     onPressed: () {
-                      if (_isAccepted) {
-                        _handleRegister();
-                      } else {
-                        String msg = !_isFieldsFilled
-                            ? "Please fill all details first"
-                            : "Please accept the Privacy Policy";
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(msg),
-                            backgroundColor: Colors.orange,
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        );
+                      if (_formKey.currentState!.validate()) {
+                        if (_isAccepted) {
+                          _handleRegister();
+                        } else {
+                          _showErrorSnackBar(
+                            "Please accept our Privacy Policy first",
+                          );
+                        }
                       }
                     },
                   ),
@@ -331,13 +400,14 @@ class _SignupScreenState extends State<SignupScreen> {
     bool isPass = false,
     TextInputType? type,
     String? Function(String?)? validator,
+    List<TextInputFormatter>? formatters, // 👈 Step A: Naya parameter add kiya
   }) {
     return TextFormField(
       controller: controller,
       obscureText: isPass ? _isPasswordHidden : false,
       keyboardType: type,
       validator: validator,
-      autovalidateMode: AutovalidateMode.onUserInteraction,
+      inputFormatters: formatters, // 👈 Step B: Formatter apply kiya
       style: TextStyle(color: isDark ? Colors.white : Colors.black),
       decoration: InputDecoration(
         hintText: hint,

@@ -74,7 +74,17 @@ class _LoginScreenState extends State<LoginScreen> {
           _emailController.text.trim(),
           _passwordController.text.trim(),
         );
-        if (creds.user != null) await _handleNavigation(creds.user!);
+
+        if (creds.user != null) {
+          // 🔥 Real-time App Logic: Check if Email is Verified
+          if (creds.user!.emailVerified) {
+            await _handleNavigation(creds.user!);
+          } else {
+            // Agar verify nahi hai toh logout kar dein aur msg dikhayen
+            await FirebaseAuth.instance.signOut();
+            _showError("Please verify your email first. Check your inbox.");
+          }
+        }
       } on FirebaseAuthException catch (e) {
         _showError(e.message ?? "Login failed");
       } finally {
@@ -129,9 +139,13 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: isDark ? const Color(0xFF1D1B20) : AppColors.white,
         body: SafeArea(
           child: SingleChildScrollView(
+            // 🔥 Premium Feel
+            physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 30),
             child: Form(
               key: _formKey,
+              // 🔥 Real-time validation
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: Column(
                 children: [
                   const SizedBox(height: 40),
@@ -152,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 30),
 
-                  // 1. Email Field with Professional Validation
+                  // 1. Email Field
                   _buildTextField(
                     controller: _emailController,
                     hint: "Email",
@@ -161,12 +175,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     validator: (val) {
                       if (val == null || val.isEmpty)
                         return "Email is required";
-
-                      // 🔥 Professional RegExp for Email format
                       final bool emailValid = RegExp(
                         r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
                       ).hasMatch(val);
-
                       if (!emailValid)
                         return "Please enter a valid email address";
                       return null;
@@ -174,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 15),
 
-                  // 2. Password Field with Strength Validation
+                  // 2. Password Field
                   _buildTextField(
                     controller: _passwordController,
                     hint: "Password",
@@ -186,21 +197,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         return "Password is required";
                       if (val.length < 8)
                         return "Password must be at least 8 characters";
-
-                      // Optional: Login par bhi check laga sakte hain taake user ko security yaad rahe
-                      if (!RegExp(r'[A-Z]').hasMatch(val))
-                        return "Must contain an uppercase letter";
-                      if (!RegExp(r'[0-9]').hasMatch(val))
-                        return "Must contain at least one number";
-
                       return null;
                     },
                   ),
 
                   _buildForgotPasswordLink(),
 
-                  // 🔥 Fix: Fixed height ko thora kam kiya taake scrolling behtar ho
-                  const SizedBox(height: 150),
+                  // 🔥 Improved Spacing (Responsive feel)
+                  const SizedBox(height: 40),
 
                   // 3. Login Button
                   CustomButton(
@@ -210,9 +214,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: _handleLogin,
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 30),
                   _buildDivider(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 30),
 
                   // 4. Social Login Section
                   Row(
@@ -227,7 +231,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 40),
                   _buildRegisterLink(isDark),
                 ],
               ),
