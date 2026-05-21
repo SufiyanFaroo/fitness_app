@@ -99,7 +99,6 @@ class MealService {
     }
   }
 
-  // 🔥 Task 10: Get Nutrition Data from Firebase (Real-time)
   Stream<DocumentSnapshot> getNutritionData() {
     final uid = _auth.currentUser?.uid;
     // Ensure karein ke path bilkul sahi ho jahan aapka data para hai
@@ -107,7 +106,7 @@ class MealService {
         .collection('users')
         .doc(uid)
         .collection('settings')
-        .doc('nutrition') // Ya 'weekly_stats' jo bhi aapne rakha hai
+        .doc('nutrition')
         .snapshots();
   }
 
