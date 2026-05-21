@@ -1,10 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:fitness_app/data/services/fitness_repository.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:fitness_app/core/constants/app_colors.dart';
 import 'package:fitness_app/core/utils/app_assets.dart';
 import 'package:fitness_app/core/utils/theme_provider.dart';
+import 'package:fitness_app/data/services/fitness_repository.dart';
 import 'package:fitness_app/data/services/search_delegate.dart';
 import 'package:fitness_app/view/activity_tracker/activity_tracker_view.dart';
 import 'package:fitness_app/view/notification/notification_screen.dart';
@@ -12,12 +18,6 @@ import 'package:fitness_app/view/profile/profile_view.dart';
 import 'package:fitness_app/view/progress_photo/progress_photo_view.dart';
 import 'package:fitness_app/view/sleep_tracker/sleep_tracker_view.dart';
 import 'package:fitness_app/view/workout_tracker/workout_tracker_view.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class MainTabView extends StatefulWidget {
   const MainTabView({super.key});
@@ -1223,7 +1223,6 @@ class _MainTabViewState extends State<MainTabView> {
                     const SizedBox(height: 15),
 
                     // 🔥 Professional Logs (Timeline)
-                    // Inhein aap Firebase se dynamic bhi kar sakte hain
                     _buildSmallLog("6am - 8am", "600ml", isLast: false),
                     _buildSmallLog("9am - 11am", "500ml", isLast: false),
                     _buildSmallLog("11am - 2pm", "1000ml", isLast: false),

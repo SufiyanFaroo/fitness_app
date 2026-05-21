@@ -2,11 +2,13 @@
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fitness_app/app/ui/chat/presentation/screen/chat_dashboard_screen.dart';
 import 'package:fitness_app/data/services/fitness_repository.dart';
 import 'package:fitness_app/data/services/profile_service.dart';
 import 'package:fitness_app/core/constants/app_colors.dart';
 import 'package:fitness_app/core/utils/app_assets.dart';
 import 'package:fitness_app/core/utils/theme_provider.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fitness_app/app/ui/auth/login_screen.dart';
 import 'package:flutter/material.dart';
@@ -44,32 +46,28 @@ class _ProfileViewState extends State<ProfileView> {
     }
   }
 
-  // 🔥 Task 3: Optimized Image Picker & Compression
   Future<void> _handleImagePicker() async {
     final ImagePicker picker = ImagePicker();
     final prefs = await SharedPreferences.getInstance();
 
     final XFile? image = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 40, // Compressed for faster upload (< 500KB)
+      imageQuality: 40,
     );
 
     if (image != null) {
       setState(() {
         _isUploading = true;
-        _localImagePath = image.path; // Instant UI Update
+        _localImagePath = image.path;
       });
 
-      // Save locally for persistence
       await prefs.setString('user_profile_local_${_service.uid}', image.path);
 
       try {
         String? downloadUrl = await _repo.uploadProfileImage(File(image.path));
 
         if (downloadUrl != null) {
-          await _repo.updateUserProfile({
-            "profile_image": downloadUrl,
-          }); // Fixed key name
+          await _repo.updateUserProfile({"profile_image": downloadUrl});
           _showSnackBar("Profile Updated Successfully! ✅");
         }
       } catch (e) {
@@ -79,12 +77,6 @@ class _ProfileViewState extends State<ProfileView> {
       }
     }
   }
-  // Future<void> _loadLocalImage() async {
-  //   final prefs = await SharedPreferences.getInstance();
-  //   setState(() {
-  //     _localImagePath = prefs.getString('user_profile_local_${_service.uid}');
-  //   });
-  // }
 
   String _calculateAge(String? dob) {
     if (dob == null || dob.isEmpty || dob == "---") return "---";
@@ -96,48 +88,6 @@ class _ProfileViewState extends State<ProfileView> {
       return "---";
     }
   }
-
-  // Future<void> _handleImagePicker() async {
-  //   final ImagePicker picker = ImagePicker();
-
-  //   // 1. Gallery se image pick karein
-  //   final XFile? image = await picker.pickImage(
-  //     source: ImageSource.gallery,
-  //     imageQuality: 50, // Size compress karne ke liye taake upload jaldi ho
-  //   );
-
-  //   if (image != null) {
-  //     setState(() {
-  //       _isUploading = true; // Loader shuru karein
-  //       // Local path ko foran update karein taake user ko wait na karna pare
-  //       _localImagePath = image.path;
-  //     });
-
-  //     try {
-  //       // 2. Firebase/Cloudinary par upload karein (Aapki repository ke zariye)
-  //       String? downloadUrl = await _repo.uploadProfileImage(File(image.path));
-
-  //       if (downloadUrl != null) {
-  //         // 3. Firestore mein URL update karein
-  //         await _repo.updateUserProfile({"profile_url": downloadUrl});
-
-  //         if (mounted) {
-  //           ScaffoldMessenger.of(context).showSnackBar(
-  //             const SnackBar(content: Text("Profile Updated Successfully! ✅")),
-  //           );
-  //         }
-  //       }
-  //     } catch (e) {
-  //       debugPrint("Upload Error: $e");
-  //     } finally {
-  //       if (mounted) {
-  //         setState(() {
-  //           _isUploading = false; // Loader band karein
-  //         });
-  //       }
-  //     }
-  //   }
-  // }
 
   void _showSnackBar(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -234,7 +184,12 @@ class _ProfileViewState extends State<ProfileView> {
                 ),
                 const SizedBox(height: 25),
                 _buildPhysicalStats(isDark, height, weight, age),
-                const SizedBox(height: 30),
+                const SizedBox(height: 25),
+
+                // 🔥 Professional Chat Entry Action Button Card
+                _buildCommunityChatCard(isDark),
+
+                const SizedBox(height: 10),
                 _buildSection("Account", [
                   _menuRow(Icons.person_outline, "Personal Data", isDark),
                   _menuRow(Icons.emoji_events_outlined, "Achievement", isDark),
@@ -269,6 +224,92 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
+  // 🔥 Professional Premium Chat Action Card Widget
+  Widget _buildCommunityChatCard(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xff92A3FD), Color(0xff9DCEFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xff92A3FD).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.chat_bubble_outline,
+              color: Colors.white,
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Fitness Community",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  "Chat with trainers and partners",
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              HapticFeedback.lightImpact(); // Premium vibration feel
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ChatDashboardScreen(),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xff92A3FD),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            child: const Text(
+              "Open",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   AppBar _buildAppBar(bool isDark, String name, String program) {
     return AppBar(
       backgroundColor: Colors.transparent,
@@ -293,13 +334,12 @@ class _ProfileViewState extends State<ProfileView> {
         PopupMenuButton<String>(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(15),
-          ), // Thora rounded look
+          ),
           icon: Icon(
             Icons.more_horiz,
             color: isDark ? Colors.white : Colors.black,
           ),
           onSelected: (val) async {
-            // 🔥 Fixed with proper block logic
             if (val == 'share') {
               await _shareProfile(name, program);
             } else if (val == 'logout') {
@@ -349,7 +389,6 @@ class _ProfileViewState extends State<ProfileView> {
     }
   }
 
-  // --- Baaki Widgets (Header, Stats, Rows) Same Rahenge ---
   Widget _buildProfileHeader(
     bool isDark,
     String name,
@@ -359,7 +398,6 @@ class _ProfileViewState extends State<ProfileView> {
   ) {
     return Row(
       children: [
-        // --- Profile Image Logic ---
         Container(
           height: 70,
           width: 70,
@@ -377,12 +415,10 @@ class _ProfileViewState extends State<ProfileView> {
                 borderRadius: BorderRadius.circular(35),
                 child: _buildImageProvider(firestoreUrl, localPath),
               ),
-
-              // 🔥 Uploading Loader Overlay
               if (_isUploading)
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.3),
+                    color: Colors.black.withOpacity(0.3),
                     shape: BoxShape.circle,
                   ),
                   child: const CircularProgressIndicator(
@@ -394,8 +430,6 @@ class _ProfileViewState extends State<ProfileView> {
           ),
         ),
         const SizedBox(width: 15),
-
-        // --- User Info ---
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -418,16 +452,12 @@ class _ProfileViewState extends State<ProfileView> {
             ],
           ),
         ),
-
-        // --- Edit Button ---
         _buildGradientButton("Edit", _handleImagePicker),
       ],
     );
   }
 
-  // 🛠️ Helper function to handle image loading and errors
   Widget _buildImageProvider(String? firestoreUrl, String? localPath) {
-    // 1. First priority: Local path (Fastest & Offline)
     if (localPath != null && File(localPath).existsSync()) {
       return Image.file(
         File(localPath),
@@ -436,8 +466,6 @@ class _ProfileViewState extends State<ProfileView> {
         height: 70,
       );
     }
-
-    // 2. Second priority: Firestore URL
     if (firestoreUrl != null && firestoreUrl.isNotEmpty) {
       return CachedNetworkImage(
         imageUrl: firestoreUrl,
@@ -450,8 +478,6 @@ class _ProfileViewState extends State<ProfileView> {
             Image.asset(AppAssets.Profile_images, fit: BoxFit.cover),
       );
     }
-
-    // 3. Last priority: Default Asset
     return Image.asset(
       AppAssets.Profile_images,
       fit: BoxFit.cover,
@@ -476,7 +502,7 @@ class _ProfileViewState extends State<ProfileView> {
       width: 95,
       padding: const EdgeInsets.symmetric(vertical: 15),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
+        color: isDark ? Colors.white10 : Colors.white,
         borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
@@ -499,7 +525,7 @@ class _ProfileViewState extends State<ProfileView> {
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
+        color: isDark ? Colors.white10 : Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(

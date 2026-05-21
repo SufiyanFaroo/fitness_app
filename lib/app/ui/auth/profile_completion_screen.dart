@@ -1,16 +1,12 @@
-// ignore_for_file: avoid_print
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import 'package:fitness_app/data/services/auth_service.dart';
 import 'package:fitness_app/core/constants/app_colors.dart';
 import 'package:fitness_app/core/utils/app_assets.dart';
 import 'package:fitness_app/core/utils/theme_provider.dart';
 import 'package:fitness_app/core/widgets/custom_button.dart';
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
-// Service & Screens
-
 import 'package:fitness_app/app/ui/auth/goal_selection_screen.dart';
 
 class ProfileCompletionScreen extends StatefulWidget {
