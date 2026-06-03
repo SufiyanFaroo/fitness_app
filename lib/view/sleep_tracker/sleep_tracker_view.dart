@@ -653,7 +653,7 @@ class _SleepTrackerViewState extends State<SleepTrackerView> {
                 child: Switch(
                   value: state,
                   onChanged: onChanged,
-                  activeColor: Colors.white,
+                  focusColor: Colors.white,
                   activeTrackColor: const Color(0xFF00FAD9),
                   inactiveThumbColor: Colors.white,
                   inactiveTrackColor: Colors.grey.shade300,

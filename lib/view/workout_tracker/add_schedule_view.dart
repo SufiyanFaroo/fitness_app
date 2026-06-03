@@ -1,68 +1,92 @@
 import 'package:fitness_app/core/utils/theme_provider.dart';
+import 'package:fitness_app/core/constants/app_colors.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../data/services/workout_service.dart'; // 🔥 Service import check karein
+import 'package:intl/intl.dart';
+import '../../data/services/workout_service.dart'; // Path verify karlein
 
 class AddScheduleView extends StatefulWidget {
-  const AddScheduleView({super.key});
+  final String? editDocId;
+  final Map<String, dynamic>? existingData;
+
+  const AddScheduleView({super.key, this.editDocId, this.existingData});
 
   @override
   State<AddScheduleView> createState() => _AddScheduleViewState();
 }
 
 class _AddScheduleViewState extends State<AddScheduleView> {
-  final WorkoutService _service = WorkoutService(); // 🔥 Service Instance
+  final WorkoutService _service = WorkoutService();
 
-  String selectedWorkout = "Upperbody Workout";
-  String selectedDifficulty = "Beginner";
-  String selectedReps = "12 Times";
-  String selectedWeight = "10 kg";
-  DateTime selectedTime = DateTime.now();
-  bool isSaving = false; // 🔥 Save button loading indicator
-  // --- Date Helpers to fix the errors ---
+  late String selectedWorkout;
+  late String selectedDifficulty;
+  late String selectedReps;
+  late String selectedWeight;
+  late DateTime selectedDateTime;
+  bool isSaving = false;
 
-  String _getWeekday(int day) {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    return days[day - 1];
+  bool get isEditMode => widget.editDocId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    // ✅ DYNAMIC FORM ROUTINE: Auto-fills standard pickers tracking maps if parameters exists
+    if (isEditMode && widget.existingData != null) {
+      var d = widget.existingData!;
+      selectedWorkout = d['workoutName'] ?? d['workout'] ?? "Upperbody Workout";
+      selectedDifficulty = d['difficulty'] ?? "Beginner";
+      selectedReps = d['repetitions'] ?? d['reps'] ?? "12 Times";
+      selectedWeight = d['weight'] ?? "10 kg";
+      selectedDateTime = DateTime.parse(
+        d['scheduleTime'] ?? d['time'] ?? DateTime.now().toIso8601String(),
+      );
+    } else {
+      selectedWorkout = "Upperbody Workout";
+      selectedDifficulty = "Beginner";
+      selectedReps = "12 Times";
+      selectedWeight = "10 kg";
+      selectedDateTime = DateTime.now();
+    }
   }
 
-  String _getMonth(int month) {
-    const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
-    return months[month - 1];
-  }
-
-  // --- 🔥 NEW: Save Functionality ---
   Future<void> _handleSave() async {
     setState(() => isSaving = true);
 
-    await _service.saveWorkoutSchedule(
-      workout: selectedWorkout,
-      difficulty: selectedDifficulty,
-      reps: selectedReps,
-      weight: selectedWeight,
-      time: selectedTime,
-    );
+    if (isEditMode) {
+      // ✅ INTERCEPT TRIGGER: Fires explicit custom updating function when key pointers exist
+      await _service.updateWorkoutSchedule(
+        docId: widget.editDocId!,
+        workout: selectedWorkout,
+        difficulty: selectedDifficulty,
+        reps: selectedReps,
+        weight: selectedWeight,
+        time: selectedDateTime,
+      );
+    } else {
+      await _service.saveWorkoutSchedule(
+        workout: selectedWorkout,
+        difficulty: selectedDifficulty,
+        reps: selectedReps,
+        weight: selectedWeight,
+        time: selectedDateTime,
+      );
+    }
 
     if (mounted) {
       setState(() => isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Workout Schedule Saved to Cloud! 🔥")),
+        SnackBar(
+          content: Text(
+            isEditMode
+                ? "Schedule variables modified successfully!"
+                : "Schedule synchronized successfully! 🔥",
+          ),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.primaryActive,
+        ),
       );
-      Navigator.pop(context); // Save ke baad pichle page par jayein
+      Navigator.pop(context);
     }
   }
 
@@ -81,96 +105,100 @@ class _AddScheduleViewState extends State<AddScheduleView> {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: Text(
-              "Time",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              "Dynamic Date & Time Configuration wheel",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
           ),
-          _buildTimePicker(isDark),
-          const SizedBox(height: 20),
+          _buildDateTimePicker(isDark),
+          const SizedBox(height: 10),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: Text(
-              "Details Workout",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              "Details Workout Optimization",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
           ),
-          // _buildDetailTile ke onTap ko update karein:
-          _buildDetailTile(
-            Icons.fitness_center_outlined,
-            "Choose Workout",
-            selectedWorkout,
-            isDark,
-            onTap: () async {
-              // 🔥 Firebase se categories mangwao
-              List<String> categories = await _service.getWorkoutCategories();
 
-              if (mounted) {
-                _showSelectionPicker(
-                  context,
-                  categories, // 🔥 Ab ye dynamic list use karega
-                  (v) => setState(() => selectedWorkout = v),
+          Expanded(
+            child: ListView(
+              shrinkWrap: true,
+              physics: const BouncingScrollPhysics(),
+              children: [
+                _buildDetailTile(
+                  Icons.fitness_center_outlined,
+                  "Choose Workout",
+                  selectedWorkout,
                   isDark,
-                );
-              }
-            },
-          ),
-          _buildDetailTile(
-            Icons.swap_vert_rounded,
-            "Difficulty",
-            selectedDifficulty,
-            isDark,
-            onTap: () => _showSelectionPicker(
-              context,
-              ["Beginner", "Intermediate", "Advanced"],
-              (v) => setState(() => selectedDifficulty = v),
-              isDark,
+                  onTap: () async {
+                    List<String> categories = await _service
+                        .getWorkoutCategories();
+                    if (mounted) {
+                      _showSelectionPicker(
+                        context,
+                        categories,
+                        (v) => setState(() => selectedWorkout = v),
+                        isDark,
+                      );
+                    }
+                  },
+                ),
+                _buildDetailTile(
+                  Icons.swap_vert_rounded,
+                  "Difficulty Level",
+                  selectedDifficulty,
+                  isDark,
+                  onTap: () => _showSelectionPicker(
+                    context,
+                    ["Beginner", "Intermediate", "Advanced"],
+                    (v) => setState(() => selectedDifficulty = v),
+                    isDark,
+                  ),
+                ),
+                _buildDetailTile(
+                  Icons.repeat_rounded,
+                  "Custom Repetitions",
+                  selectedReps,
+                  isDark,
+                  onTap: () => _showNumberPicker(
+                    context,
+                    "Repetitions",
+                    "Times",
+                    1,
+                    50,
+                    (v) => setState(() => selectedReps = "$v Times"),
+                    isDark,
+                  ),
+                ),
+                _buildDetailTile(
+                  Icons.monitor_weight_outlined,
+                  "Custom Load Weights",
+                  selectedWeight,
+                  isDark,
+                  onTap: () => _showNumberPicker(
+                    context,
+                    "Weights",
+                    "kg",
+                    0,
+                    150,
+                    (v) => setState(() => selectedWeight = "$v kg"),
+                    isDark,
+                  ),
+                ),
+              ],
             ),
           ),
-          _buildDetailTile(
-            Icons.repeat_rounded,
-            "Custom Repetitions",
-            selectedReps,
-            isDark,
-            onTap: () => _showNumberPicker(
-              context,
-              "Repetitions",
-              "Times",
-              1,
-              50,
-              (v) => setState(() => selectedReps = "$v Times"),
-              isDark,
-            ),
-          ),
-          _buildDetailTile(
-            Icons.monitor_weight_outlined,
-            "Custom Weights",
-            selectedWeight,
-            isDark,
-            onTap: () => _showNumberPicker(
-              context,
-              "Weights",
-              "kg",
-              1,
-              150,
-              (v) => setState(() => selectedWeight = "$v kg"),
-              isDark,
-            ),
-          ),
-          const Spacer(),
           _buildSaveButton(context),
         ],
       ),
     );
   }
 
-  // --- 🔥 Updated Save Button with Loading ---
-  // --- 🔥 Corrected Save Button ---
   Widget _buildSaveButton(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(30.0),
+      padding: const EdgeInsets.fromLTRB(30, 10, 30, 30),
       child: InkWell(
-        // Navigator.pop ki jagah _handleSave call karein
         onTap: isSaving ? null : _handleSave,
+        borderRadius: BorderRadius.circular(30),
         child: Container(
           width: double.infinity,
           height: 55,
@@ -182,16 +210,43 @@ class _AddScheduleViewState extends State<AddScheduleView> {
           ),
           child: Center(
             child: isSaving
-                ? const CircularProgressIndicator(color: Colors.white)
-                : const Text(
-                    "Save",
-                    style: TextStyle(
+                ? const CupertinoActivityIndicator(color: Colors.white)
+                : Text(
+                    isEditMode
+                        ? "Apply Parameter Changes"
+                        : "Commit Schedule Parameters",
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontSize: 15,
                     ),
                   ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateTimePicker(bool isDark) {
+    return SizedBox(
+      height: 140,
+      child: CupertinoTheme(
+        data: CupertinoThemeData(
+          brightness: isDark ? Brightness.dark : Brightness.light,
+          textTheme: CupertinoTextThemeData(
+            dateTimePickerTextStyle: TextStyle(
+              color: isDark ? Colors.white : Colors.black,
+              fontSize: 15,
+            ),
+          ),
+        ),
+        child: CupertinoDatePicker(
+          mode: CupertinoDatePickerMode.dateAndTime,
+          initialDateTime: selectedDateTime,
+          minimumYear: 2025,
+          maximumYear: 2030,
+          use24hFormat: false,
+          onDateTimeChanged: (val) => setState(() => selectedDateTime = val),
         ),
       ),
     );
@@ -210,30 +265,35 @@ class _AddScheduleViewState extends State<AddScheduleView> {
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
+            topLeft: Radius.circular(25),
+            topRight: Radius.circular(25),
           ),
         ),
-        child: ListView.builder(
-          shrinkWrap: true,
-          itemCount: options.length,
-          itemBuilder: (context, index) => ListTile(
-            title: Text(
-              options[index],
-              textAlign: TextAlign.center,
-              style: TextStyle(color: isDark ? Colors.white : Colors.black),
+        child: SafeArea(
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: options.length,
+            itemBuilder: (context, index) => ListTile(
+              title: Text(
+                options[index],
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+              onTap: () {
+                onSelect(options[index]);
+                Navigator.pop(context);
+              },
             ),
-            onTap: () {
-              onSelect(options[index]);
-              Navigator.pop(context); // Selection ke baad band ho jaye
-            },
           ),
         ),
       ),
     );
   }
 
-  // --- Scrolling Number Picker (Reps & Weights ke liye) ---
   void _showNumberPicker(
     BuildContext context,
     String title,
@@ -248,12 +308,12 @@ class _AddScheduleViewState extends State<AddScheduleView> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        height: 300,
+        height: 280,
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
           borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
+            topLeft: Radius.circular(25),
+            topRight: Radius.circular(25),
           ),
         ),
         child: Column(
@@ -263,7 +323,7 @@ class _AddScheduleViewState extends State<AddScheduleView> {
               child: Text(
                 "Select $title",
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -279,6 +339,7 @@ class _AddScheduleViewState extends State<AddScheduleView> {
                       "${min + index} $unit",
                       style: TextStyle(
                         color: isDark ? Colors.white : Colors.black,
+                        fontSize: 16,
                       ),
                     ),
                   ),
@@ -291,36 +352,15 @@ class _AddScheduleViewState extends State<AddScheduleView> {
                 Navigator.pop(context);
               },
               child: const Text(
-                "Confirm",
-                style: TextStyle(fontSize: 18, color: Color(0xFF92A3FD)),
+                "Confirm Selection",
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Color(0xFF92A3FD),
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  // --- UI Components ---
-  Widget _buildTimePicker(bool isDark) {
-    return SizedBox(
-      height: 120,
-      child: CupertinoTheme(
-        data: CupertinoThemeData(
-          textTheme: CupertinoTextThemeData(
-            dateTimePickerTextStyle: TextStyle(
-              color: isDark ? Colors.white : Colors.black,
-              fontSize: 18,
-            ),
-          ),
-        ),
-        child: CupertinoDatePicker(
-          mode: CupertinoDatePickerMode.time,
-          onDateTimeChanged: (val) {
-            setState(() {
-              selectedTime = val;
-            });
-          },
         ),
       ),
     );
@@ -335,9 +375,10 @@ class _AddScheduleViewState extends State<AddScheduleView> {
   }) {
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(15),
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        padding: const EdgeInsets.all(15),
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: isDark
               ? Colors.white.withValues(alpha: 0.05)
@@ -350,10 +391,21 @@ class _AddScheduleViewState extends State<AddScheduleView> {
             const SizedBox(width: 12),
             Text(
               title,
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
             ),
             const Spacer(),
-            Text(val, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            Text(
+              val,
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black87,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(width: 5),
             Icon(Icons.chevron_right, color: Colors.grey.shade400, size: 18),
           ],
@@ -371,50 +423,19 @@ class _AddScheduleViewState extends State<AddScheduleView> {
         onPressed: () => Navigator.pop(context),
       ),
       title: Text(
-        "Add Schedule",
-        style: TextStyle(
-          color: isDark ? Colors.white : Colors.black,
-          fontWeight: FontWeight.bold,
-        ),
+        isEditMode ? "Modify Target parameters" : "Create Custom Schedule",
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
       ),
       centerTitle: true,
-      actions: [
-        // Three dots menu logic
-        PopupMenuButton(
-          icon: Icon(
-            Icons.more_horiz,
-            color: isDark ? Colors.white : Colors.black,
-          ),
-          itemBuilder: (context) => [
-            const PopupMenuItem(value: 1, child: Text("Clear Fields")),
-          ],
-          onSelected: (val) {
-            if (val == 1) {
-              setState(() {
-                selectedWorkout =
-                    "Upperbody Workout"; // Initial value ke sath match karein
-                selectedDifficulty = "Beginner";
-                selectedReps = "12 Times";
-                selectedWeight = "10 kg";
-              });
-            }
-          },
-        ),
-        const SizedBox(width: 10),
-      ],
     );
   }
 
-  // _buildDateHeader ko dynamic banayein
   Widget _buildDateHeader() {
-    DateTime now = DateTime.now(); // 🔥 Current Date
-
-    // Dynamic String: e.g., "Wed, 11 Mar 2026"
-    String formattedDate =
-        "${_getWeekday(now.weekday)}, ${now.day} ${_getMonth(now.month)} ${now.year}";
-
+    String formattedDate = DateFormat(
+      'EEEE, dd MMMM yyyy - hh:mm a',
+    ).format(selectedDateTime);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Row(
         children: [
           const Icon(
@@ -423,9 +444,15 @@ class _AddScheduleViewState extends State<AddScheduleView> {
             size: 20,
           ),
           const SizedBox(width: 10),
-          Text(
-            formattedDate,
-            style: const TextStyle(color: Colors.grey, fontSize: 14),
+          Expanded(
+            child: Text(
+              "Target Date Target: $formattedDate",
+              style: const TextStyle(
+                color: Colors.blueAccent,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),

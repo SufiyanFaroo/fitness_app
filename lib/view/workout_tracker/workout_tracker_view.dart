@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:fitness_app/data/services/workout_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fitness_app/data/services/workout_service.dart'; // Path verify karlein
 import 'package:fitness_app/core/constants/app_colors.dart';
 import 'package:fitness_app/core/utils/app_assets.dart';
 import 'package:fitness_app/view/workout_tracker/WorkoutScheduleView.dart';
@@ -17,19 +18,16 @@ class WorkoutTrackerView extends StatefulWidget {
 }
 
 class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
-  // Initialization with default values
   List<bool> switchStates = [false, false];
   final WorkoutService _service = WorkoutService();
   StreamSubscription? _workoutSubscription;
 
-  // Clock Variables
   String _currentTime = "";
   Timer? _timeTimer;
 
   @override
   void initState() {
     super.initState();
-    // Start with current time immediately
     _currentTime = DateFormat('hh:mm:ss a').format(DateTime.now());
     _initPersistentData();
     _startClock();
@@ -60,30 +58,27 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
       });
     }
 
-    // --- FIXED LINE: ?. use karein aur listen se pehle check karein ---
-    _workoutSubscription = _service.getWorkoutStream()?.listen(
-      (snapshot) {
-        if (snapshot.exists && mounted) {
-          var data = snapshot.data() as Map<String, dynamic>;
-          setState(() {
-            if (switchStates.length >= 2) {
-              switchStates[0] = data['workout_0'] ?? switchStates[0];
-              switchStates[1] = data['workout_1'] ?? switchStates[1];
-            }
-          });
-        }
-      },
-      onError: (error) {
-        debugPrint("Firebase Sync Error: $error");
-      },
-    );
+    _workoutSubscription = _service.getWorkoutStream()?.listen((snapshot) {
+      if (snapshot.exists && mounted) {
+        var data = snapshot.data() as Map<String, dynamic>;
+        setState(() {
+          if (switchStates.length >= 2) {
+            switchStates[0] = data['workout_0'] ?? switchStates[0];
+            switchStates[1] = data['workout_1'] ?? switchStates[1];
+          }
+        });
+      }
+    }, onError: (error) => debugPrint("Firestore Sync Crash: $error"));
   }
 
   Future<void> _handleRefresh() async {
     await _initPersistentData();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("Data Synced!")));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Cloud Sync Complete!"),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _handleSwitchToggle(int index, bool value) {
@@ -93,6 +88,21 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
       });
       _service.saveSwitchState(index, value);
       _service.updateWorkoutOnFirebase(index, value);
+
+      if (_service.uid.isNotEmpty) {
+        int currentDayIndex = DateTime.now().weekday % 7;
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(_service.uid)
+            .collection('workout_analytics')
+            .doc("day_$currentDayIndex")
+            .set({
+              'day_index': currentDayIndex,
+              'fullbody_percentage': switchStates[0] == true ? 85.0 : 15.0,
+              'upperbody_percentage': switchStates[1] == true ? 75.0 : 25.0,
+              'last_sync': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+      }
     }
   }
 
@@ -145,18 +155,13 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
     );
   }
 
-  // --- UI WIDGETS ---
-
   Widget _buildAppBar() {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color popupBgColor = isDark ? const Color(0xff2C2C2C) : Colors.white;
     final Color popupIconColor = isDark ? Colors.white : Colors.black;
     final Color popupTextColor = isDark ? Colors.white : Colors.black;
 
-    // 1. --- Dynamic Active Workout Logic ---
-    // Is se dono switches check honge
     String activeWorkout = "No Active Workout";
-
     if (switchStates.length >= 2) {
       if (switchStates[0] && switchStates[1]) {
         activeWorkout = "Multiple Workouts Active";
@@ -173,17 +178,13 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Back Button
             _actionBtn(
               icon: Icons.arrow_back_ios_new,
               onTap: () {
                 if (Navigator.canPop(context)) Navigator.pop(context);
               },
             ),
-
-            // 2. --- Toolbar Title & Dynamic Status ---
             Expanded(
-              // Expanded use kiya taake text overflow na ho
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -208,15 +209,13 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
                 ],
               ),
             ),
-
-            // 3. --- More Options Button ---
             PopupMenuButton<String>(
               color: popupBgColor,
               onSelected: (value) async {
                 if (value == 'refresh') await _handleRefresh();
                 if (value == 'share') {
                   await Share.share(
-                    'FitQuest Progress: $activeWorkout at $_currentTime\nJoin me: https://play.google.com/store/apps/details?id=com.fitquest.app',
+                    'FitQuest Activity Update: $activeWorkout at $_currentTime\nTrack your progress now!',
                   );
                 }
               },
@@ -233,8 +232,8 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
                       Icon(Icons.refresh, color: popupIconColor, size: 20),
                       const SizedBox(width: 10),
                       Text(
-                        "Refresh Data",
-                        style: TextStyle(color: popupTextColor),
+                        "Refresh Framework Data",
+                        style: TextStyle(color: popupTextColor, fontSize: 13),
                       ),
                     ],
                   ),
@@ -246,8 +245,8 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
                       Icon(Icons.share, color: popupIconColor, size: 20),
                       const SizedBox(width: 10),
                       Text(
-                        "Share Progress",
-                        style: TextStyle(color: popupTextColor),
+                        "Share Analytics Vector",
+                        style: TextStyle(color: popupTextColor, fontSize: 13),
                       ),
                     ],
                   ),
@@ -256,6 +255,240 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildGraphHeader() {
+    return Container(
+      padding: const EdgeInsets.only(bottom: 20),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppColors.secondaryColor1, AppColors.secondaryColor2],
+        ),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(40),
+          bottomRight: Radius.circular(40),
+        ),
+      ),
+      child: Column(
+        children: [
+          _buildAppBar(),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 220,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _service.getWeeklyAnalyticsStream(),
+                builder: (context, snapshot) {
+                  List<FlSpot> fullBodySpots = const [
+                    FlSpot(0, 20),
+                    FlSpot(1, 40),
+                    FlSpot(2, 30),
+                    FlSpot(3, 70),
+                    FlSpot(4, 50),
+                    FlSpot(5, 80),
+                    FlSpot(6, 40),
+                  ];
+                  List<FlSpot> upperBodySpots = const [
+                    FlSpot(0, 30),
+                    FlSpot(1, 20),
+                    FlSpot(2, 50),
+                    FlSpot(3, 40),
+                    FlSpot(4, 70),
+                    FlSpot(5, 30),
+                    FlSpot(6, 60),
+                  ];
+
+                  if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                    List<FlSpot> cleanFull = [];
+                    List<FlSpot> cleanUpper = [];
+
+                    for (var doc in snapshot.data!.docs) {
+                      var data = doc.data() as Map<String, dynamic>;
+                      int x = (data['day_index'] ?? 0).toInt();
+                      double yFull = (data['fullbody_percentage'] ?? 0.0)
+                          .toDouble();
+                      double yUpper = (data['upperbody_percentage'] ?? 0.0)
+                          .toDouble();
+
+                      // Safety range limit constraints parameters check
+                      if (x >= 0 && x <= 6) {
+                        cleanFull.add(FlSpot(x.toDouble(), yFull));
+                        cleanUpper.add(FlSpot(x.toDouble(), yUpper));
+                      }
+                    }
+                    if (cleanFull.length == 7) fullBodySpots = cleanFull;
+                    if (cleanUpper.length == 7) upperBodySpots = cleanUpper;
+                  }
+
+                  return LineChart(
+                    _mainChartData(fullBodySpots, upperBodySpots),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  LineChartData _mainChartData(
+    List<FlSpot> fullBodySpots,
+    List<FlSpot> upperBodySpots,
+  ) {
+    String formattedDate = DateFormat('EEE, dd MMM').format(DateTime.now());
+    int today = DateTime.now().weekday % 7;
+    int yesterday = today > 0 ? today - 1 : 6;
+
+    bool fullBodyOn = switchStates.isNotEmpty && switchStates[0];
+    bool upperBodyOn = switchStates.length > 1 && switchStates[1];
+
+    List<ShowingTooltipIndicators> tooltips = [];
+
+    // ✅ FIXED: Checked bounds explicitly to ensure index length matches structural sizes safely before triggering tooltips
+    if ((fullBodyOn && fullBodySpots.length > today) ||
+        (upperBodyOn && upperBodySpots.length > today)) {
+      bool targetUpper = upperBodyOn;
+      tooltips = [
+        ShowingTooltipIndicators([
+          LineBarSpot(
+            _getLineBarData(
+              targetUpper ? upperBodySpots : fullBodySpots,
+              targetUpper ? const Color(0xffC58BF2) : const Color(0xff00FAD9),
+            ),
+            targetUpper ? 1 : 0,
+            targetUpper ? upperBodySpots[today] : fullBodySpots[today],
+          ),
+        ]),
+      ];
+    }
+
+    return LineChartData(
+      showingTooltipIndicators: tooltips,
+      lineTouchData: LineTouchData(
+        enabled: true,
+        handleBuiltInTouches: true,
+        touchTooltipData: LineTouchTooltipData(
+          getTooltipColor: (spot) => Colors.white,
+          tooltipBorderRadius: BorderRadius.circular(12),
+          getTooltipItems: (touchedSpots) {
+            return touchedSpots.map((spot) {
+              final isFullBody = spot.barIndex == 0;
+              final accurateSpots = isFullBody ? fullBodySpots : upperBodySpots;
+
+              // ✅ FIXED: Multi-layered boundary range safety check to avoid structural layout mismatch exceptions
+              if (accurateSpots.length <= today ||
+                  accurateSpots.length <= yesterday ||
+                  today < 0 ||
+                  yesterday < 0) {
+                return const LineTooltipItem("", TextStyle());
+              }
+
+              double todayVal = accurateSpots[today].y;
+              double yesterdayVal = accurateSpots[yesterday].y;
+              String arrow = todayVal >= yesterdayVal ? " ↑" : " ↓";
+
+              return LineTooltipItem(
+                "${isFullBody ? 'Fullbody' : 'Upperbody'}\n",
+                TextStyle(
+                  color: isFullBody
+                      ? const Color(0xff00FAD9)
+                      : const Color(0xffC58BF2),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                children: [
+                  TextSpan(
+                    text: "${spot.y.toInt()}% $arrow",
+                    style: TextStyle(
+                      color: todayVal >= yesterdayVal
+                          ? Colors.green
+                          : Colors.red,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  TextSpan(
+                    text: "\n$formattedDate",
+                    style: const TextStyle(color: Colors.grey, fontSize: 9),
+                  ),
+                ],
+              );
+            }).toList();
+          },
+        ),
+      ),
+      titlesData: FlTitlesData(
+        show: true,
+        bottomTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            getTitlesWidget: (v, m) {
+              const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+              int index = v.toInt();
+              if (index < 0 || index >= days.length) return const SizedBox();
+              bool isToday = index == today;
+              return Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  days[index],
+                  style: TextStyle(
+                    color: isToday
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.3),
+                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 10,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        leftTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 35,
+            getTitlesWidget: (v, m) => Text(
+              "${v.toInt()}%",
+              style: const TextStyle(color: Colors.white, fontSize: 10),
+            ),
+          ),
+        ),
+        topTitles: const AxisTitles(),
+        rightTitles: const AxisTitles(),
+      ),
+      gridData: FlGridData(
+        show: true,
+        drawVerticalLine: false,
+        getDrawingHorizontalLine: (v) =>
+            FlLine(color: Colors.white.withValues(alpha: 0.05), strokeWidth: 1),
+      ),
+      borderData: FlBorderData(show: false),
+      minX: 0,
+      maxX: 6,
+      minY: 0,
+      maxY: 100,
+      lineBarsData: [
+        if (fullBodyOn) _getLineBarData(fullBodySpots, const Color(0xff00FAD9)),
+        if (upperBodyOn)
+          _getLineBarData(upperBodySpots, const Color(0xffC58BF2)),
+      ],
+    );
+  }
+
+  LineChartBarData _getLineBarData(List<FlSpot> spots, Color lineColor) {
+    return LineChartBarData(
+      spots: spots,
+      isCurved: true,
+      color: lineColor,
+      barWidth: 3,
+      dotData: const FlDotData(show: false),
+      belowBarData: BarAreaData(
+        show: true,
+        color: lineColor.withValues(alpha: 0.08),
       ),
     );
   }
@@ -341,7 +574,6 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
               ],
             ),
           ),
-          // Range check for safety
           if (index < switchStates.length)
             _buildGradientSwitch(
               value: switchStates[index],
@@ -384,36 +616,6 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  // --- BAAKI WIDGETS (Slightly Minified for space) ---
-
-  Widget _buildGraphHeader() {
-    return Container(
-      padding: const EdgeInsets.only(bottom: 20),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.secondaryColor1, AppColors.secondaryColor2],
-        ),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(40),
-          bottomRight: Radius.circular(40),
-        ),
-      ),
-      child: Column(
-        children: [
-          _buildAppBar(),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 220,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: LineChart(_mainChartData()),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -605,188 +807,6 @@ class _WorkoutTrackerViewState extends State<WorkoutTrackerView> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  LineChartData _mainChartData() {
-    String formattedDate = DateFormat('EEE, dd MMM').format(DateTime.now());
-
-    // 1. Current Day Logic (0=Sun, 1=Mon... 6=Sat)
-    int today = DateTime.now().weekday % 7;
-    int yesterday = today > 0 ? today - 1 : 6;
-
-    bool fullBodyOn = switchStates.isNotEmpty && switchStates[0];
-    bool upperBodyOn = switchStates.length > 1 && switchStates[1];
-
-    // 2. DYNAMIC INDICATOR FOCUS: Jab Upperbody on ho toh arrow Purple par shift ho jaye
-    List<ShowingTooltipIndicators> tooltips = [];
-    if (fullBodyOn || upperBodyOn) {
-      tooltips = [
-        ShowingTooltipIndicators([
-          LineBarSpot(
-            upperBodyOn ? _upperBodyLineData() : _fullBodyLineData(),
-            upperBodyOn ? 1 : 0,
-            (upperBodyOn ? _upperBodyLineData() : _fullBodyLineData())
-                .spots[today],
-          ),
-        ]),
-      ];
-    }
-
-    return LineChartData(
-      showingTooltipIndicators: tooltips,
-      lineTouchData: LineTouchData(
-        enabled: true,
-        handleBuiltInTouches:
-            true, // User click karke lines toggle kar sakta hai
-        touchTooltipData: LineTouchTooltipData(
-          getTooltipColor: (spot) => Colors.white,
-          tooltipBorderRadius: BorderRadius.circular(12),
-          getTooltipItems: (touchedSpots) {
-            return touchedSpots.map((spot) {
-              final isFullBody = spot.barIndex == 0;
-              final lineData = isFullBody
-                  ? _fullBodyLineData()
-                  : _upperBodyLineData();
-
-              // Progress Arrow Calculation
-              double todayVal = lineData.spots[today].y;
-              double yesterdayVal = lineData.spots[yesterday].y;
-              String arrow = todayVal >= yesterdayVal ? " ↑" : " ↓";
-              Color arrowColor = todayVal >= yesterdayVal
-                  ? Colors.green
-                  : Colors.red;
-
-              return LineTooltipItem(
-                "${isFullBody ? 'Fullbody' : 'Upperbody'}\n",
-                TextStyle(
-                  color: isFullBody
-                      ? const Color(0xff00FAD9)
-                      : const Color(0xffC58BF2),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-                children: [
-                  TextSpan(
-                    text: "${spot.y.toInt()}% $arrow",
-                    style: TextStyle(
-                      color: arrowColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                  TextSpan(
-                    text: "\n$formattedDate",
-                    style: const TextStyle(
-                      color: Colors.grey,
-                      fontSize: 9,
-                      fontWeight: FontWeight.normal,
-                    ),
-                  ),
-                ],
-              );
-            }).toList();
-          },
-        ),
-      ),
-
-      titlesData: FlTitlesData(
-        show: true,
-        bottomTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            getTitlesWidget: (v, m) {
-              const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-              int index = v.toInt();
-              if (index < 0 || index >= days.length) return const SizedBox();
-              bool isToday = index == today;
-              return Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Text(
-                  days[index],
-                  style: TextStyle(
-                    color: isToday
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.3),
-                    fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
-                    fontSize: 10,
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        leftTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            reservedSize: 35,
-            getTitlesWidget: (v, m) => Text(
-              "${v.toInt()}%",
-              style: const TextStyle(color: Colors.white, fontSize: 10),
-            ),
-          ),
-        ),
-        topTitles: const AxisTitles(),
-        rightTitles: const AxisTitles(),
-      ),
-
-      gridData: FlGridData(
-        show: true,
-        drawVerticalLine: false,
-        getDrawingHorizontalLine: (v) =>
-            FlLine(color: Colors.white.withValues(alpha: 0.05), strokeWidth: 1),
-      ),
-      borderData: FlBorderData(show: false),
-
-      lineBarsData: [
-        if (fullBodyOn) _fullBodyLineData(),
-        if (upperBodyOn) _upperBodyLineData(),
-      ],
-    );
-  }
-  // 3. --- Helper Functions taake code clean rahay ---
-
-  LineChartBarData _fullBodyLineData() {
-    return LineChartBarData(
-      spots: const [
-        FlSpot(0, 20),
-        FlSpot(1, 40),
-        FlSpot(2, 30),
-        FlSpot(3, 70),
-        FlSpot(4, 50),
-        FlSpot(5, 80),
-        FlSpot(6, 40),
-      ],
-      isCurved: true,
-      color: const Color(0xff00FAD9),
-      barWidth: 3,
-      dotData: const FlDotData(show: false),
-      belowBarData: BarAreaData(
-        show: true,
-        color: const Color(0xff00FAD9).withValues(alpha: 0.1),
-      ),
-    );
-  }
-
-  LineChartBarData _upperBodyLineData() {
-    return LineChartBarData(
-      spots: const [
-        FlSpot(0, 30),
-        FlSpot(1, 20),
-        FlSpot(2, 50),
-        FlSpot(3, 40),
-        FlSpot(4, 70),
-        FlSpot(5, 30),
-        FlSpot(6, 60),
-      ],
-      isCurved: true,
-      color: const Color(0xffC58BF2),
-      barWidth: 3,
-      dotData: const FlDotData(show: false),
-      belowBarData: BarAreaData(
-        show: true,
-        color: const Color(0xffC58BF2).withValues(alpha: 0.1),
       ),
     );
   }

@@ -238,7 +238,7 @@ class _ProfileViewState extends State<ProfileView> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xff92A3FD).withOpacity(0.3),
+            color: const Color(0xff92A3FD).withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -249,7 +249,7 @@ class _ProfileViewState extends State<ProfileView> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -274,7 +274,7 @@ class _ProfileViewState extends State<ProfileView> {
                 Text(
                   "Chat with trainers and partners",
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
+                    color: Colors.white.withValues(alpha: 0.8),
                     fontSize: 12,
                   ),
                 ),
@@ -418,7 +418,7 @@ class _ProfileViewState extends State<ProfileView> {
               if (_isUploading)
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     shape: BoxShape.circle,
                   ),
                   child: const CircularProgressIndicator(

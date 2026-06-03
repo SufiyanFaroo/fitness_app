@@ -7,7 +7,9 @@ class MessageModel {
   final String text;
   final Timestamp timestamp;
   final bool seen;
-  final String messageType; // text, image, link
+  final String messageType; // text, image, link, file
+  final String?
+  mediaUrl; // ✅ ADDED: Safe nullable parameter for dynamic image/media messages
 
   MessageModel({
     required this.messageId,
@@ -17,8 +19,10 @@ class MessageModel {
     required this.timestamp,
     required this.seen,
     required this.messageType,
+    this.mediaUrl,
   });
 
+  // 📦 1. SERIALIZATION: Convert Model to JSON structure configuration blueprint
   Map<String, dynamic> toJson() {
     return {
       'messageId': messageId,
@@ -28,9 +32,12 @@ class MessageModel {
       'timestamp': timestamp,
       'seen': seen,
       'messageType': messageType,
+      'mediaUrl':
+          mediaUrl, // Synchronized cleanly inside the document map payload
     };
   }
 
+  // 📥 2. DESERIALIZATION: Create Model from Firestore Document safely with strict fallbacks
   factory MessageModel.fromJson(Map<String, dynamic> json) {
     return MessageModel(
       messageId: json['messageId'] ?? '',
@@ -40,6 +47,8 @@ class MessageModel {
       timestamp: json['timestamp'] ?? Timestamp.now(),
       seen: json['seen'] ?? false,
       messageType: json['messageType'] ?? 'text',
+      mediaUrl:
+          json['mediaUrl'], // Maps null safely if the message node is plain text
     );
   }
 }

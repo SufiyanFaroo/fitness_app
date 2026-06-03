@@ -27,6 +27,48 @@ class ChatBubble extends StatelessWidget {
     }
   }
 
+  // ✅ FULL SCREEN VIEWER OVERLAY: Opens image in a premium full-screen dismissible dialog layer
+  void _openFullMediaViewer(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (context) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.close_rounded,
+              color: Colors.white,
+              size: 26,
+            ),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: Center(
+          child: InteractiveViewer(
+            panEnabled: true,
+            boundaryMargin: const EdgeInsets.all(20),
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: CachedNetworkImage(
+              imageUrl: url,
+              placeholder: (context, url) => const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              ),
+              errorWidget: (context, url, error) =>
+                  const Icon(Icons.broken_image, color: Colors.white),
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Align(
@@ -60,11 +102,10 @@ class ChatBubble extends StatelessWidget {
               ? CrossAxisAlignment.end
               : CrossAxisAlignment.start,
           children: [
-            // 🖼️ Conditional Render: High-Speed Image View Attachment
+            // 🖼️ CONDITIONAL RENDER: Image message with full screen touch interactions hook active
             if (messageType == "image" && mediaUrl != null)
               GestureDetector(
-                onTap:
-                    () {}, // Action to expand full screen image view if required
+                onTap: () => _openFullMediaViewer(context, mediaUrl!),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: CachedNetworkImage(
@@ -83,7 +124,7 @@ class ChatBubble extends StatelessWidget {
                 ),
               ),
 
-            // 🔗 Conditional Render: Clickable Hyperlink Text Wrapper
+            // 🔗 CONDITIONAL RENDER: Clickable Hyperlink text parameters wrapper
             if (messageType == "link")
               GestureDetector(
                 onTap: () => _launchURL(text),
@@ -97,7 +138,7 @@ class ChatBubble extends StatelessWidget {
                 ),
               ),
 
-            // 💬 Standard View Payload Rule
+            // 💬 STANDARD TEXT VIEW PAYLOAD
             if (messageType == "text")
               Text(
                 text,

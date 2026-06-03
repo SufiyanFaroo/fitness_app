@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:fitness_app/core/utils/bmi_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -305,21 +306,15 @@ class _MainTabViewState extends State<MainTabView> {
       height: 65,
       decoration: _fabDecoration(),
       child: FloatingActionButton(
-        onPressed: () =>
-            _showQuickActions(context), // Saare features yahan se khulenge
+        onPressed: () => _showQuickActions(context),
         backgroundColor: Colors.transparent,
         elevation: 0,
         highlightElevation: 0,
-        child: const Icon(
-          Icons.search_rounded,
-          color: Colors.white,
-          size: 35,
-        ), // Plus icon zyada professional hai
+        child: const Icon(Icons.search_rounded, color: Colors.white, size: 35),
       ),
     );
   }
 
-  // --- Professional Quick Actions Menu ---
   void _showQuickActions(BuildContext context) {
     // Haptic feedback for premium feel
     HapticFeedback.mediumImpact();
@@ -358,12 +353,11 @@ class _MainTabViewState extends State<MainTabView> {
               shrinkWrap: true,
               crossAxisCount: 3,
               mainAxisSpacing: 20,
-              // GridView ke andar aise update karein:
               children: [
                 _actionItem(Icons.search, "Search", () {
                   Navigator.pop(context);
                   _handleSearchClick();
-                }, isDark), // 🔥 Yahan isDark pass karein
+                }, isDark),
 
                 _actionItem(
                   Icons.fitness_center,
@@ -416,7 +410,6 @@ class _MainTabViewState extends State<MainTabView> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 🔥 Icon Container with Premium Styling
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -439,7 +432,6 @@ class _MainTabViewState extends State<MainTabView> {
                 color: const Color(0xFF92A3FD).withValues(alpha: 0.2),
                 width: 1.5,
               ),
-              // Premium Elevated Shadow
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFF92A3FD).withValues(alpha: 0.15),
@@ -449,17 +441,12 @@ class _MainTabViewState extends State<MainTabView> {
               ],
             ),
             child: ShaderMask(
-              // 🔥 Icon ko Gradient look dene ke liye
               shaderCallback: (bounds) => const LinearGradient(
                 colors: [Color(0xFF92A3FD), Color(0xFF9DCEFF)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ).createShader(bounds),
-              child: Icon(
-                icon,
-                color: Colors.white, // ShaderMask ki wajah se gradient dikhega
-                size: 30,
-              ),
+              child: Icon(icon, color: Colors.white, size: 30),
             ),
           ),
           const SizedBox(height: 12),
@@ -483,7 +470,6 @@ class _MainTabViewState extends State<MainTabView> {
     setState(() => selectedIndex = index);
   }
 
-  // UI Decoration logic separate karein
   BoxDecoration _fabDecoration() {
     return const BoxDecoration(
       shape: BoxShape.circle,
@@ -502,7 +488,6 @@ class _MainTabViewState extends State<MainTabView> {
     );
   }
 
-  // Event handling logic separate karein
   Future<void> _handleSearchClick() async {
     try {
       await _repo.logInteraction('search_fab_click', 'User clicked search');
@@ -516,43 +501,14 @@ class _MainTabViewState extends State<MainTabView> {
     double weightVal = double.tryParse(weight.split(' ')[0]) ?? 0.0;
     double heightVal = double.tryParse(height.split(' ')[0]) ?? 0.0;
 
-    String bmiScore = "0.0";
-    String bmiStatus = "Calculating...";
-    Color statusColor = Colors.white;
-    String bmiAdvice = "";
-
-    if (weightVal > 0 && heightVal > 0) {
-      double heightInMeters = heightVal / 100;
-      double bmi = weightVal / (heightInMeters * heightInMeters);
-      bmiScore = bmi.toStringAsFixed(1);
-
-      if (bmi < 18.5) {
-        bmiStatus = "Underweight";
-        statusColor = const Color(0xFFFDBB12); // Amber
-        bmiAdvice =
-            "You are in the underweight range. Consider consulting a nutritionist for a balanced diet plan.";
-      } else if (bmi < 25) {
-        bmiStatus = "Normal weight";
-        statusColor = const Color(0xFF42D3A5); // Greenish Teal
-        bmiAdvice =
-            "A BMI of 18.5-24.9 indicates that you are at a healthy weight for your height. Great job!";
-      } else if (bmi < 30) {
-        bmiStatus = "Overweight";
-        statusColor = const Color(0xFFFF8064); // Orange/Coral
-        bmiAdvice =
-            "You are in the overweight range. Maintaining a healthy weight lowers your risk of serious health problems.";
-      } else {
-        bmiStatus = "Obese";
-        statusColor = const Color(0xFFFF5252); // Red
-        bmiAdvice =
-            "You are in the obese range. Focus on consistent exercise and a calorie-controlled diet.";
-      }
-    }
+    BMIMetricResult bmi = BMIHelper.calculateAdvancedBMI(
+      weightKg: weightVal,
+      heightCm: heightVal,
+    );
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       width: double.infinity,
-      height: 160,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: AppColors.secondaryG,
@@ -573,13 +529,14 @@ class _MainTabViewState extends State<MainTabView> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
             child: Row(
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
                         "BMI (Body Mass Index)",
@@ -589,37 +546,43 @@ class _MainTabViewState extends State<MainTabView> {
                           fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 6),
                       Text(
-                        bmiStatus,
-                        style: TextStyle(
-                          color: statusColor,
+                        bmi.status,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 15),
+                      const SizedBox(height: 12),
                       MaterialButton(
-                        onPressed: () => _showBMIDetails(
-                          bmiScore,
-                          bmiStatus,
-                          bmiAdvice,
-                          isDark,
-                        ),
+                        onPressed: () => _showBMIDetails(bmi, isDark),
                         color: const Color(0xFF92A3FD),
                         elevation: 0,
                         shape: const StadiumBorder(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         child: const Text(
                           "View More",
-                          style: TextStyle(color: Colors.white, fontSize: 10),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 12),
                 Container(
-                  width: 120,
-                  height: 120,
+                  width: 115,
+                  height: 115,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     image: DecorationImage(
@@ -630,10 +593,10 @@ class _MainTabViewState extends State<MainTabView> {
                   child: Stack(
                     children: [
                       Positioned(
-                        top: 22,
-                        right: 18,
+                        top: 20,
+                        right: 16,
                         child: Text(
-                          bmiScore,
+                          "${bmi.score}",
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -660,21 +623,17 @@ class _MainTabViewState extends State<MainTabView> {
   }
 
   // --- Dynamic BottomSheet Function ---
-  void _showBMIDetails(
-    String score,
-    String status,
-    String advice,
-    bool isDark,
-  ) {
+  void _showBMIDetails(BMIMetricResult bmi, bool isDark) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: isDark ? const Color(0xFF1D1B20) : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
       builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(25),
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(25, 12, 25, 25),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -687,46 +646,111 @@ class _MainTabViewState extends State<MainTabView> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text(
-                "BMI Result",
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black,
-                ),
+              const Text(
+                "Comprehensive BMI Evaluation",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 25),
+
+              // Core Score Displays
               Text(
-                score,
+                "${bmi.score}",
                 style: const TextStyle(
-                  fontSize: 54,
+                  fontSize: 56,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF92A3FD),
                 ),
               ),
               Text(
-                status,
+                bmi.status,
                 style: const TextStyle(
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFFC58BF2),
                 ),
               ),
-              const SizedBox(height: 20),
-              Text(
-                advice,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDark ? Colors.white70 : Colors.grey[600],
-                  height: 1.5,
+
+              const SizedBox(height: 15),
+              const Divider(),
+              const SizedBox(height: 15),
+
+              _buildMetricRow(
+                "BMI Prime Ratio:",
+                "${bmi.prime}",
+                "Normal parameter target: 0.74 - 1.0",
+              ),
+              _buildMetricRow(
+                "Ponderal Index:",
+                "${bmi.ponderalIndex} kg/m³",
+                "Optimal lean baseline metric",
+              ),
+              _buildMetricRow(
+                "Optimal Weight Target:",
+                "${bmi.minHealthyWeight} - ${bmi.maxHealthyWeight} KG",
+                "Recommended range for height",
+              ),
+
+              const SizedBox(height: 15),
+              Container(
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Text(
+                  bmi.advice,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white70 : Colors.grey[700],
+                    height: 1.5,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildMetricRow(String title, String value, String description) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xff6B50F6),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            description,
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+          const SizedBox(height: 4),
+          const Divider(height: 1, thickness: 0.5),
+        ],
+      ),
     );
   }
 
@@ -1037,7 +1061,7 @@ class _MainTabViewState extends State<MainTabView> {
             boxShadow: [
               if (!isDark)
                 BoxShadow(
-                  color: const Color(0xffC58BF2).withOpacity(0.1),
+                  color: const Color(0xffC58BF2).withValues(alpha: 0.1),
                   blurRadius: 10,
                   offset: const Offset(0, 5),
                 ),
@@ -1086,7 +1110,7 @@ class _MainTabViewState extends State<MainTabView> {
                       AppAssets.Main_Tab_view_HeartRate,
                       fit: BoxFit.cover,
                       // 🔥 Wave animation effect colors
-                      color: const Color(0xFF92A3FD).withOpacity(0.8),
+                      color: const Color(0xFF92A3FD).withValues(alpha: 0.8),
                     ),
                   ),
                   Positioned(
@@ -1106,7 +1130,9 @@ class _MainTabViewState extends State<MainTabView> {
                             borderRadius: BorderRadius.circular(10),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xff92A3FD).withOpacity(0.3),
+                                color: const Color(
+                                  0xff92A3FD,
+                                ).withValues(alpha: 0.3),
                                 blurRadius: 4,
                                 offset: const Offset(0, 2),
                               ),
