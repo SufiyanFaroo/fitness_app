@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,19 +13,24 @@ class WorkoutService {
 
   String get uid => _auth.currentUser?.uid ?? "";
 
+  // ✅ FIX: Added exact getter property token required by UI tracker views mapping modules
+  String get currentUserId => uid;
+
   // --- LOCAL STORAGE (Offline Support) ---
   Future<void> saveSwitchState(int index, bool value) async {
     if (uid.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    // UID base key use karna achi baat hai taake multi-user login mein data mix na ho
-    await prefs.setBool('workout_switch_${uid}_$index', value);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('workout_switch_${uid}_$index', value);
+    } catch (e) {
+      debugPrint("Local Storage switch save error: $e");
+    }
   }
 
   Future<List<bool>> getLocalSwitchStates(int count) async {
     final prefs = await SharedPreferences.getInstance();
     List<bool> states = [];
     for (int i = 0; i < count; i++) {
-      // Default value false rakhein taake "No Active Workout" logic kaam kare
       states.add(prefs.getBool('workout_switch_${uid}_$i') ?? false);
     }
     return states;
@@ -44,13 +50,13 @@ class WorkoutService {
             'last_updated': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
     } catch (e) {
-      print("Firebase Update Error: $e");
+      debugPrint("Firebase Update Error: $e");
     }
   }
 
   // Stream for Real-time UI updates
   Stream<DocumentSnapshot>? getWorkoutStream() {
-    if (uid.isEmpty) return null; // Safe check
+    if (uid.isEmpty) return null;
     return _firestore
         .collection('users')
         .doc(uid)
@@ -59,71 +65,33 @@ class WorkoutService {
         .snapshots();
   }
 
+  // ✅ FIXED: Injected the absolute stream query required to draw dynamic line chart vectors without crashing
+  Stream<QuerySnapshot> getWeeklyAnalyticsStream() {
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('workout_analytics')
+        .orderBy('day_index', descending: false)
+        .snapshots();
+  }
+
   // --- SCHEDULE BACKEND LOGIC ---
-  // --- SINGLE MERGED FUNCTION ---
-  // Future<void> updateScheduleStatus(String taskTitle, bool isDone) async {
-  //   final String currentUid = _auth.currentUser?.uid ?? "guest_user";
-  //   if (currentUid == "guest_user") return;
-
-  //   try {
-  //     final String dateKey = DateTime.now().toString().split(' ')[0];
-  //     final prefs = await SharedPreferences.getInstance();
-
-  //     // 1. LOCAL STORAGE SYNC (Donon patterns save kar raha hai safety ke liye)
-  //     await prefs.setBool('sched_${currentUid}_$taskTitle', isDone);
-  //     await prefs.setBool('status_${taskTitle}_$currentUid', isDone);
-
-  //     // 2. FIREBASE SYNC - Part A: Workout History (Today's Progress)
-  //     await _firestore
-  //         .collection('users')
-  //         .doc(currentUid)
-  //         .collection('workout_history')
-  //         .doc(dateKey)
-  //         .set({
-  //           'status': isDone ? 'Finished' : 'In Progress',
-  //           'workout_name': taskTitle,
-  //           'date': dateKey,
-  //           'timestamp': FieldValue.serverTimestamp(),
-  //         }, SetOptions(merge: true));
-
-  //     // 3. FIREBASE SYNC - Part B: Schedule Update
-  //     await _firestore
-  //         .collection('users')
-  //         .doc(currentUid)
-  //         .collection('workout_schedules')
-  //         .doc(taskTitle.replaceAll(' ', '_'))
-  //         .set({
-  //           'title': taskTitle,
-  //           'status': isDone ? 'Done' : 'Pending',
-  //           'last_updated': FieldValue.serverTimestamp(),
-  //         }, SetOptions(merge: true));
-
-  //     debugPrint("✅ Full Sync Complete for: $taskTitle");
-  //   } catch (e) {
-  //     debugPrint("❌ Sync Error: $e");
-  //   }
-  // }
-
   Future<bool> getLocalScheduleStatus(String taskTitle) async {
+    if (uid.isEmpty) return false;
     final prefs = await SharedPreferences.getInstance();
-    // UID base key taake user data mix na ho
     return prefs.getBool('sched_${uid}_$taskTitle') ?? false;
   }
-  // --- POPUP ACTIONS LOGIC ---
 
   // 1. Clear All Schedules (Local + Firebase)
   Future<void> clearAllSchedules() async {
     if (uid.isEmpty) return;
 
-    // Local Storage Clear
     final prefs = await SharedPreferences.getInstance();
-    // Saare keys jo 'schedule_' se start hote hain unhe reset karne ke liye
     final keys = prefs.getKeys().where((k) => k.startsWith('schedule_$uid'));
     for (String key in keys) {
       await prefs.remove(key);
     }
 
-    // Firebase Clear (Schedules delete karna)
     try {
       var collection = _firestore
           .collection('users')
@@ -138,24 +106,25 @@ class WorkoutService {
     }
   }
 
-  // WorkoutService mein add karein
   Future<void> saveSetting(String key, bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('setting_${uid}_$key', value);
+    if (uid.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('setting_${uid}_$key', value);
 
-    // Firebase mein bhi sync karein taake preferences save rahein
-    await _firestore.collection('users').doc(uid).set({
-      'settings': {key: value},
-    }, SetOptions(merge: true));
+      await _firestore.collection('users').doc(uid).set({
+        'settings': {key: value},
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Settings Cache Fail: $e");
+    }
   }
 
-  // WorkoutService.dart mein
   Future<bool> getSettingLocally(String key) async {
+    if (uid.isEmpty) return true;
     final prefs = await SharedPreferences.getInstance();
-    // Humne tracker wale switches ki tarah hi pattern rakha hai
     return prefs.getBool('setting_${uid}_$key') ?? true;
   }
-  // WorkoutService.dart mein add karein
 
   Future<void> saveNewSchedule({
     required String workout,
@@ -166,10 +135,8 @@ class WorkoutService {
   }) async {
     if (uid.isEmpty) return;
 
-    // Unique ID for the document
     String scheduleId = "sch_${DateTime.now().millisecondsSinceEpoch}";
 
-    // 1. Firebase Sync
     try {
       await _firestore
           .collection('users')
@@ -186,15 +153,13 @@ class WorkoutService {
             'isCompleted': false,
             'created_at': FieldValue.serverTimestamp(),
           });
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_added_workout_$uid', workout);
     } catch (e) {
       debugPrint("Firebase Save Error: $e");
     }
-
-    // 2. Local Storage (Backup ke liye)
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('last_added_workout_$uid', workout);
   }
-  // workout_service.dart mein add karein
 
   Future<void> saveWorkoutSchedule({
     required String workout,
@@ -205,10 +170,8 @@ class WorkoutService {
   }) async {
     if (uid.isEmpty) return;
 
-    // Unique ID for the workout document
     String docId = "workout_${DateTime.now().millisecondsSinceEpoch}";
 
-    // 1. Firebase Cloud Sync
     try {
       await _firestore
           .collection('users')
@@ -225,19 +188,64 @@ class WorkoutService {
             'isCompleted': false,
             'timestamp': FieldValue.serverTimestamp(),
           });
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_scheduled_workout_$uid', workout);
     } catch (e) {
       debugPrint("Firebase Error: $e");
     }
-
-    // 2. Local Storage (Last workout save karne ke liye)
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('last_scheduled_workout', workout);
   }
 
-  // workout_service.dart mein
+  // ✅ NEW METHOD: Modifies an existing schedule parameters configuration block inside Firestore collection fields
+  Future<void> updateWorkoutSchedule({
+    required String docId,
+    required String workout,
+    required String difficulty,
+    required String reps,
+    required String weight,
+    required DateTime time,
+  }) async {
+    if (uid.isEmpty) return;
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('workout_schedules')
+          .doc(docId)
+          .update({
+            'workoutName': workout,
+            'difficulty': difficulty,
+            'repetitions': reps,
+            'weight': weight,
+            'scheduleTime': time.toIso8601String(),
+            'last_edited_at': FieldValue.serverTimestamp(),
+          });
+      debugPrint("✅ Schedule fields customized successfully: $docId");
+    } catch (e) {
+      debugPrint("❌ Firestore Update Operational Error: $e");
+    }
+  }
+
+  // ✅ NEW METHOD: Drops a specific schedule document loop straight from user sub-collections completely
+  Future<void> deleteWorkoutSchedule(String docId) async {
+    if (uid.isEmpty) return;
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('workout_schedules')
+          .doc(docId)
+          .delete();
+      debugPrint(
+        "🗑️ Schedule record wiped straight from network registries: $docId",
+      );
+    } catch (e) {
+      debugPrint("❌ Firestore Deletion Core Block Fault: $e");
+    }
+  }
+
   Future<List<String>> getWorkoutCategories() async {
     try {
-      // Agar aapne Firestore mein 'categories' ka collection banaya hai:
       var snapshot = await _firestore
           .collection('settings')
           .doc('workout_types')
@@ -249,7 +257,6 @@ class WorkoutService {
       debugPrint("Categories Fetch Error: $e");
     }
 
-    // Fallback: Agar Firebase se na mile toh ye default list return karega
     return [
       "Upperbody Workout",
       "Lowerbody Workout",
@@ -258,7 +265,6 @@ class WorkoutService {
       "Yoga",
     ];
   }
-  // workout_service.dart mein add karein
 
   Future<void> startWorkoutSession(
     String workoutName,
@@ -268,12 +274,10 @@ class WorkoutService {
 
     String sessionId = "session_${DateTime.now().millisecondsSinceEpoch}";
 
-    // 1. Local Storage (Current Session save karne ke liye)
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('active_session_$uid', workoutName);
-
-    // 2. Firebase Sync
     try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('active_session_$uid', workoutName);
+
       await _firestore
           .collection('users')
           .doc(uid)
@@ -289,7 +293,6 @@ class WorkoutService {
       debugPrint("Firebase Session Error: $e");
     }
   }
-  // workout_service.dart mein add karein
 
   Future<void> saveExerciseProgress({
     required String exerciseTitle,
@@ -300,12 +303,10 @@ class WorkoutService {
 
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
 
-    // 1. Local Storage Sync (Offline use ke liye)
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('last_exercise_$uid', exerciseTitle);
-
-    // 2. Firebase Firestore Sync
     try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_exercise_$uid', exerciseTitle);
+
       await _firestore
           .collection('users')
           .doc(uid)
@@ -326,29 +327,26 @@ class WorkoutService {
     required String name,
     required bool isComplete,
   }) async {
-    if (uid.isEmpty) return; // UID check jo aapne pehle likha tha
+    if (uid.isEmpty) return;
 
     try {
       await _firestore.collection('users').doc(uid).set({
         'full_name': name,
         'is_profile_complete': isComplete,
         'last_updated': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true)); // merge: true taake purana data delete na ho
+      }, SetOptions(merge: true));
 
       debugPrint("Profile Updated in Firebase!");
     } catch (e) {
       debugPrint("Profile Error: $e");
     }
   }
-  // workout_service.dart ke andar
 
   Future<void> saveWorkoutToHistory(String workoutName) async {
     if (uid.isEmpty) return;
 
     try {
-      String todayDate = DateTime.now().toString().split(
-        ' ',
-      )[0]; // Result: 2026-03-16
+      String todayDate = DateTime.now().toIso8601String().split('T')[0];
 
       await _firestore
           .collection('users')
@@ -366,26 +364,18 @@ class WorkoutService {
       debugPrint("History Error: $e");
     }
   }
-  // workout_service.dart ke andar...
 
-  // 🔥 FIREBASE STORAGE UPLOAD LOGIC
   Future<String?> uploadUserFile(File file, String folderName) async {
-    if (uid.isEmpty) return null; // Pehle se maujood uid getter use karein
+    if (uid.isEmpty) return null;
 
     try {
-      // Unique file name taake purani files overwrite na hon
       String fileName = "${uid}_${DateTime.now().millisecondsSinceEpoch}";
-
-      // Reference create karein (e.g., profiles/abc123_123456.jpg)
       Reference ref = FirebaseStorage.instance.ref().child(
         '$folderName/$fileName',
       );
 
-      // Upload task
       UploadTask uploadTask = ref.putFile(file);
       TaskSnapshot snapshot = await uploadTask;
-
-      // Download URL hasil karein
       String downloadUrl = await snapshot.ref.getDownloadURL();
 
       debugPrint("✅ File Uploaded! URL: $downloadUrl");
@@ -397,11 +387,10 @@ class WorkoutService {
   }
 
   Future<void> updateProfilePicture(File imageFile) async {
-    // 1. Pehle Storage mein upload karein
+    if (uid.isEmpty) return;
     String? imageUrl = await uploadUserFile(imageFile, 'user_profiles');
 
     if (imageUrl != null) {
-      // 2. Phir Firestore mein URL save karein
       await _firestore.collection('users').doc(uid).update({
         'photo_url': imageUrl,
         'last_updated': FieldValue.serverTimestamp(),
@@ -409,20 +398,15 @@ class WorkoutService {
     }
   }
 
-  // 1. Activity Log Save karne ke liye (Steps aur Water intake)
   Future<void> saveActivityData(String type, String value) async {
     if (uid.isEmpty) return;
 
     try {
-      final String dateKey = DateTime.now().toString().split(
-        ' ',
-      )[0]; // 2026-03-16
+      final String dateKey = DateTime.now().toIso8601String().split('T')[0];
 
-      // A. Local Storage Sync
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('${type}_${uid}_$dateKey', value);
 
-      // B. Firebase Sync
       await _firestore
           .collection('users')
           .doc(uid)
@@ -439,11 +423,9 @@ class WorkoutService {
     }
   }
 
-  // 2. Local Data Fetch karne ke liye (Taake UI foran load ho)
-
-  // 3. Real-time Firebase Updates ke liye (Stream)
-  Stream<DocumentSnapshot> getActivityStream() {
-    final String dateKey = DateTime.now().toString().split(' ')[0];
+  Stream<DocumentSnapshot>? getActivityStream() {
+    if (uid.isEmpty) return null;
+    final String dateKey = DateTime.now().toIso8601String().split('T')[0];
     return _firestore
         .collection('users')
         .doc(uid)
@@ -452,37 +434,29 @@ class WorkoutService {
         .snapshots();
   }
 
-  // --- SINGLE MERGED FUNCTION ---
   Future<void> updateScheduleStatus(String taskTitle, bool isDone) async {
-    final String currentUid = _auth.currentUser?.uid ?? "guest_user";
-    if (currentUid == "guest_user") return;
+    if (uid.isEmpty) return;
 
     try {
-      // 🔥 1. Date ko String mein badlein (ye local storage ke liye safe hai)
-      final String dateKey = DateTime.now().toString().split(' ')[0];
+      final String dateKey = DateTime.now().toIso8601String().split('T')[0];
       final prefs = await SharedPreferences.getInstance();
 
-      // Local Storage Sync
-      await prefs.setBool('sched_${currentUid}_$taskTitle', isDone);
-
-      // ✅ FIX: Timestamp ko direct save karne ki bajaye String save karein
+      await prefs.setBool('sched_${uid}_$taskTitle', isDone);
       await prefs.setString(
-        'last_updated_$currentUid',
+        'last_updated_$uid',
         DateTime.now().toIso8601String(),
       );
 
-      // 2. FIREBASE SYNC (Firebase mein serverTimestamp chalta hai)
       await _firestore
           .collection('users')
-          .doc(currentUid)
+          .doc(uid)
           .collection('workout_history')
           .doc(dateKey)
           .set({
             'status': isDone ? 'Finished' : 'In Progress',
             'workout_name': taskTitle,
             'date': dateKey,
-            'timestamp':
-                FieldValue.serverTimestamp(), // Firestore ke liye ye sahi hai
+            'timestamp': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
 
       debugPrint("✅ Sync Successful!");
@@ -491,23 +465,12 @@ class WorkoutService {
     }
   }
 
-  // WorkoutService.dart ke andar ye function hona chahiye:
-  // 🔥 FINAL UPDATED VERSION
   Future<String> getLocalActivityData(String type) async {
     try {
-      final String dateKey = DateTime.now().toString().split(
-        ' ',
-      )[0]; // Result: 2026-03-16
+      final String dateKey = DateTime.now().toIso8601String().split('T')[0];
       final prefs = await SharedPreferences.getInstance();
-
-      // User ki UID check (auth se)
-      final String currentUid = _auth.currentUser?.uid ?? "guest_user";
-
-      // Default values
       String defaultValue = (type == "water") ? "0L" : "0";
-
-      // Key format: water_abc123_2026-03-16
-      String storageKey = '${type}_${currentUid}_$dateKey';
+      String storageKey = '${type}_${uid}_$dateKey';
 
       return prefs.getString(storageKey) ?? defaultValue;
     } catch (e) {
@@ -517,91 +480,66 @@ class WorkoutService {
   }
 
   Future<void> saveGoal(String type, String value) async {
-    final prefs = await SharedPreferences.getInstance();
+    if (uid.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'setting_${uid}_${type}_goal_time',
+        DateTime.now().toIso8601String(),
+      );
+      await prefs.setString('setting_${uid}_${type}_goal_value', value);
 
-    // Local storage ke liye Timestamp use na karein, simple String ya current time use karein
-    await prefs.setString(
-      '${type}_goal_time',
-      DateTime.now().toIso8601String(),
-    );
-    await prefs.setString('${type}_goal_value', value);
-
-    // Firebase ke liye Timestamp theek hai
-    await _firestore.collection('users').doc(uid).set({
-      '${type}_goal': value,
-      'last_updated': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+      await _firestore.collection('users').doc(uid).set({
+        '${type}_goal': value,
+        'last_updated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Save Goal Error: $e");
+    }
   }
 
-  // Latest 5 activities lane ke liye stream
   Stream<QuerySnapshot> getLatestActivitiesStream() {
-    final user = _auth.currentUser;
-    if (user == null) return const Stream.empty();
+    if (uid.isEmpty) return const Stream.empty();
 
     return _firestore
         .collection('users')
-        .doc(user.uid)
-        .collection('activity_logs') // 👈 Spelling check karein
-        .orderBy('timestamp', descending: true)
+        .doc(uid)
+        .collection('activity_logs')
+        .orderBy('last_updated', descending: true)
         .snapshots();
   }
 
-  // WorkoutService.dart ke andar
   Future<void> logActivity(String title, String type) async {
+    if (uid.isEmpty) return;
     try {
-      // Current user ki ID check karein
-      final String currentUid = _auth.currentUser?.uid ?? "";
-
-      if (currentUid.isEmpty) {
-        debugPrint("❌ Log Error: No User Logged In");
-        return;
-      }
-
-      // Firebase mein data add ho raha hai
       await _firestore
           .collection('users')
-          .doc(currentUid)
+          .doc(uid)
           .collection('activity_logs')
           .add({
             'title': title,
-            'type': type, // 'water' ya 'steps'
-            'timestamp':
-                FieldValue.serverTimestamp(), // 🔥 Firebase Server Time
+            'type': type,
+            'timestamp': FieldValue.serverTimestamp(),
           });
-
       debugPrint("✅ Activity Logged Successfully: $title");
     } catch (e) {
       debugPrint("❌ Log Error: $e");
     }
   }
 
-  // 1. Activity Log delete karne ke liye
   Future<void> deleteActivityLog(String docId) async {
+    if (uid.isEmpty) return;
     try {
-      // 1. Current user ki ID nikalna
-      final String? currentUid = _auth.currentUser?.uid;
-
-      // 2. Check karna ke user login hai ya nahi
-      if (currentUid == null || currentUid.isEmpty) {
-        debugPrint("❌ Delete Error: User not logged in");
-        return;
-      }
-
-      // 3. Firestore se document delete karna
       await _firestore
           .collection('users')
-          .doc(currentUid)
+          .doc(uid)
           .collection('activity_logs')
           .doc(docId)
           .delete();
-
       debugPrint("🗑️ Activity Deleted Successfully: $docId");
     } catch (e) {
-      // 4. Agar koi error aaye toh console mein dikhana
       debugPrint("❌ Firestore Delete Error: $e");
-      rethrow; // Taake UI ko bhi pata chale ke error aaya hai
+      rethrow;
     }
   }
-
-  // 2. Nayi activity save karne ke liye
 }

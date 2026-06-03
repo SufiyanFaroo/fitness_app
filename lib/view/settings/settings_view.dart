@@ -256,7 +256,7 @@ class _GallerySettingsViewState extends State<GallerySettingsView> {
       ),
       trailing: Switch.adaptive(
         value: val,
-        activeColor: const Color(0xFF9B81FF),
+        focusColor: const Color(0xFF9B81FF),
         onChanged: onChange,
       ),
     );

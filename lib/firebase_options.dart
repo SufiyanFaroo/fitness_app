@@ -64,6 +64,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '732161898983',
     projectId: 'fitquest-e4d3c',
     storageBucket: 'fitquest-e4d3c.firebasestorage.app',
+    androidClientId: '732161898983-vupoa86dq8vq2itampj46hbolr4a81mn.apps.googleusercontent.com',
+    iosClientId: '732161898983-12vje12dorp55peim0dotlf1gs05i6tr.apps.googleusercontent.com',
     iosBundleId: 'com.example.fitnessApp',
   );
 
@@ -73,6 +75,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '732161898983',
     projectId: 'fitquest-e4d3c',
     storageBucket: 'fitquest-e4d3c.firebasestorage.app',
+    androidClientId: '732161898983-vupoa86dq8vq2itampj46hbolr4a81mn.apps.googleusercontent.com',
+    iosClientId: '732161898983-12vje12dorp55peim0dotlf1gs05i6tr.apps.googleusercontent.com',
     iosBundleId: 'com.example.fitnessApp',
   );
 
@@ -85,4 +89,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'fitquest-e4d3c.firebasestorage.app',
     measurementId: 'G-4R1RB7LDWM',
   );
+
 }

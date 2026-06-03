@@ -701,7 +701,7 @@ class _BreakfastViewState extends State<BreakfastView> {
                     title: const Text("Only Vegetarian"),
                     trailing: Switch(
                       value: isVegetarianOnly,
-                      activeColor: AppColors.primaryActive,
+                      focusColor: AppColors.primaryActive,
                       onChanged: (bool value) {
                         setSheetState(() {
                           isVegetarianOnly = value; // BottomSheet ka UI update

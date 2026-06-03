@@ -1,24 +1,13 @@
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fitness_app/core/utils/theme_provider.dart';
+import 'package:fitness_app/core/constants/app_colors.dart';
+import 'package:fitness_app/view/workout_tracker/add_schedule_view.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../data/services/workout_service.dart'; // Apna service path sahi rakhein
-
-class WorkoutTask {
-  final String title;
-  final String time;
-  final List<Color> colors;
-  final double topPosition;
-  bool isDone; // Tracking status locally
-
-  WorkoutTask({
-    required this.title,
-    required this.time,
-    required this.colors,
-    required this.topPosition,
-    this.isDone = false,
-  });
-}
+import 'package:intl/intl.dart';
+import '../../data/services/workout_service.dart'; // Path verify karlein
 
 class WorkoutScheduleView extends StatefulWidget {
   const WorkoutScheduleView({super.key});
@@ -28,59 +17,45 @@ class WorkoutScheduleView extends StatefulWidget {
 }
 
 class _WorkoutScheduleViewState extends State<WorkoutScheduleView> {
-  int selectedDateIndex = 3;
-  final WorkoutService _service = WorkoutService(); // Service Instance
+  final WorkoutService _service = WorkoutService();
 
-  final List<WorkoutTask> tasks = [
-    WorkoutTask(
-      title: "Ab Workout, 7:30am",
-      time: "07:30 AM",
-      colors: [const Color(0xFFEEA4CE), const Color(0xFFC150F6)],
-      topPosition: 90,
-    ),
-    WorkoutTask(
-      title: "Upperbody Workout, 9am",
-      time: "09:00 AM",
-      colors: [
-        const Color(0xFF92A3FD).withValues(alpha: 0.6),
-        const Color(0xFF9DCEFF),
-      ],
-      topPosition: 180,
-    ),
-    WorkoutTask(
-      title: "Lowerbody Workout, 3pm",
-      time: "03:00 PM",
-      colors: [const Color(0xFFF7F8F8), const Color(0xFFF7F8F8)],
-      topPosition: 540,
-    ),
-  ];
+  // ✅ DYNAMIC: Tracks active operational calendar focus pipelines natively
+  DateTime _focusedCalendarMonth = DateTime.now();
+  int selectedDateIndex = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    // App khulte hi status load karein
-    _loadStatuses();
+  double _calculateTopPosition(String timeString) {
+    try {
+      DateTime parsedTime = DateTime.parse(timeString);
+      int hour = parsedTime.hour;
+      int minute = parsedTime.minute;
+
+      double startingHour = 6.0;
+      double currentHourDecimal = hour + (minute / 60.0);
+      double verticalDelta = currentHourDecimal - startingHour;
+
+      if (verticalDelta < 0) return 10.0;
+      return (verticalDelta * 60.0) + 20.0;
+    } catch (e) {
+      return 120.0;
+    }
   }
 
-  Future<void> _loadStatuses() async {
-    // Aaj ki select ki hui date nikalna
-    DateTime selectedDate = DateTime.now().add(
-      Duration(days: selectedDateIndex),
+  // Helper calculation loop determining total visible horizontal days dynamically
+  DateTime _getCalculatedTargetDate(int index) {
+    // Generates absolute chronological days baseline mapped relative to the currently scrolled focused month
+    DateTime baselineDate = DateTime(
+      _focusedCalendarMonth.year,
+      _focusedCalendarMonth.month,
+      1,
     );
-    String dateKey =
-        "${selectedDate.year}-${selectedDate.month}-${selectedDate.day}";
 
-    for (var task in tasks) {
-      // 🔥 FIXED: Humne ID ke saath dateKey bhi bheji hai
-      bool status = await _service.getLocalScheduleStatus(
-        "${task.title}_$dateKey",
-      );
-      if (mounted) {
-        setState(() {
-          task.isDone = status;
-        });
-      }
+    // If the focused calendar matches current live month parameters, align indices starting from today
+    DateTime today = DateTime.now();
+    if (_focusedCalendarMonth.month == today.month &&
+        _focusedCalendarMonth.year == today.year) {
+      return today.add(Duration(days: index));
     }
+    return baselineDate.add(Duration(days: index));
   }
 
   @override
@@ -94,244 +69,28 @@ class _WorkoutScheduleViewState extends State<WorkoutScheduleView> {
       body: Column(
         children: [
           const SizedBox(height: 10),
-          _buildMonthHeader(isDark),
+          _buildMonthHeader(
+            isDark,
+          ), // ✅ Connected to Month Changer arrow controllers
           const SizedBox(height: 15),
-          _buildDateSelector(isDark),
+          _buildDateSelector(
+            isDark,
+          ), // ✅ Automatically loops matching dynamic navigation shifts
           const SizedBox(height: 20),
-          Expanded(child: _buildTimeline(isDark)),
+          Expanded(child: _buildDynamicTimeline(isDark)),
         ],
       ),
       floatingActionButton: _buildFAB(context, isDark),
     );
   }
 
-  // --- POPUP: Backend Sync Connected ---
-  void _showWorkoutStatusDialog(WorkoutTask task, bool isDark) {
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: "Dismiss",
-      pageBuilder: (ctx, anim1, anim2) {
-        return Center(
-          child: Material(
-            type: MaterialType.transparency,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 30),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1D1B20) : Colors.white,
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 20),
-                        onPressed: () => Navigator.pop(ctx),
-                      ),
-                      const Text(
-                        "Workout Schedule",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const Icon(Icons.more_vert),
-                    ],
-                  ),
-                  const SizedBox(height: 25),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          task.title.split(',')[0],
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.access_time,
-                              color: Colors.grey,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              "Today | ${task.time}",
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-                  GestureDetector(
-                    onTap: () async {
-                      // 🔥 SERVICE CALL: Sync to Local and Firebase
-                      await _service.updateScheduleStatus(task.title, true);
-                      setState(() => task.isDone = true);
-                      if (mounted) Navigator.pop(ctx);
-                    },
-                    child: Container(
-                      width: double.infinity,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF00F2FE), Color(0xFF4FACFE)],
-                        ),
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          "Mark as Done",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  Widget _buildDynamicTimeline(bool isDark) {
+    DateTime selectedTargetDate = _getCalculatedTargetDate(selectedDateIndex);
+    String dateQueryString = DateFormat(
+      'yyyy-MM-dd',
+    ).format(selectedTargetDate);
 
-  // --- SAVE Button: Test Sync ---
-  Widget _buildSaveButton() {
-    return Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: GestureDetector(
-        onTap: () async {
-          // Firebase test save
-          await _service.updateScheduleStatus(
-            "Schedule_Saved_${DateTime.now().second}",
-            false,
-          );
-          if (mounted) Navigator.pop(context);
-        },
-        child: Container(
-          width: double.infinity,
-          height: 55,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF92A3FD), Color(0xFF9DCEFF)],
-            ),
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: const Center(
-            child: Text(
-              "Save",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // --- BOTTOM SHEET: Add Schedule (image_f34beb.png) ---
-  void _showAddScheduleSheet(bool isDark) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.9,
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1D1B20) : Colors.white,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(30),
-            topRight: Radius.circular(30),
-          ),
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: 15),
-            _buildSheetHeader(isDark),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Row(
-                children: [
-                  Icon(Icons.calendar_month_outlined, color: Colors.grey),
-                  SizedBox(width: 10),
-                  Text(
-                    "Thu, 27 May 2022",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(left: 20, top: 10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Time",
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-            // Scrolling Time Picker logic
-            SizedBox(
-              height: 120,
-              child: CupertinoDatePicker(
-                mode: CupertinoDatePickerMode.time,
-                onDateTimeChanged: (val) {},
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(left: 20, top: 20, bottom: 10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Details Workout",
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-            _buildDetailTile(
-              Icons.fitness_center,
-              "Choose Workout",
-              "Upperbody Workout",
-              isDark,
-            ),
-            _buildDetailTile(Icons.swap_vert, "Difficulty", "Beginner", isDark),
-            _buildDetailTile(Icons.repeat, "Custom Repetitions", "", isDark),
-            _buildDetailTile(
-              Icons.monitor_weight_outlined,
-              "Custom Weights",
-              "",
-              isDark,
-            ),
-            const Spacer(),
-            _buildSaveButton(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Helper logic for Timeline
-  Widget _buildTimeline(bool isDark) {
-    List<String> times = [
+    List<String> timelineLabels = [
       "06:00 AM",
       "07:00 AM",
       "08:00 AM",
@@ -347,377 +106,344 @@ class _WorkoutScheduleViewState extends State<WorkoutScheduleView> {
       "06:00 PM",
       "07:00 PM",
     ];
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Stack(
-        children: [
-          Column(
-            children: times
-                .map(
-                  (time) => Container(
-                    height: 60,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 65,
-                          child: Text(
-                            time,
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 12,
+
+    if (_service.uid.isEmpty) {
+      return const Center(
+        child: Text("Please authenticate session to view parameters track."),
+      );
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(_service.uid)
+          .collection('workout_schedules')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: AppColors.primaryActive),
+          );
+        }
+
+        var todaysSchedules = [];
+        if (snapshot.hasData) {
+          todaysSchedules = snapshot.data!.docs.where((doc) {
+            var data = doc.data() as Map<String, dynamic>;
+            String scheduleTimeRaw = data['scheduleTime'] ?? data['time'] ?? "";
+            return scheduleTimeRaw.startsWith(dateQueryString);
+          }).toList();
+        }
+
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Stack(
+            children: [
+              Column(
+                children: timelineLabels
+                    .map(
+                      (time) => Container(
+                        height: 60,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 65,
+                              child: Text(
+                                time,
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
-                          ),
+                            Expanded(
+                              child: Divider(
+                                color: isDark
+                                    ? Colors.white12
+                                    : Colors.grey.shade200,
+                                thickness: 1,
+                              ),
+                            ),
+                          ],
                         ),
-                        Expanded(
-                          child: Divider(
-                            color: isDark
-                                ? Colors.white12
-                                : Colors.grey.shade200,
-                          ),
+                      ),
+                    )
+                    .toList(),
+              ),
+
+              ...todaysSchedules.map((doc) {
+                var data = doc.data() as Map<String, dynamic>;
+                String docId = doc.id;
+                String workoutName =
+                    data['workoutName'] ?? data['workout'] ?? "Workout";
+                String difficulty = data['difficulty'] ?? "Beginner";
+                String reps = data['repetitions'] ?? data['reps'] ?? "";
+                String weight = data['weight'] ?? "";
+                String isoTime =
+                    data['scheduleTime'] ??
+                    data['time'] ??
+                    DateTime.now().toIso8601String();
+                bool isCompleted = data['isCompleted'] ?? false;
+
+                DateTime parsedDateTime = DateTime.parse(isoTime);
+                String formattedTimeLabel = DateFormat(
+                  'hh:mm a',
+                ).format(parsedDateTime);
+                double computedTopPosition = _calculateTopPosition(isoTime);
+
+                List<Color> cardGradients = [
+                  const Color(0xFF92A3FD),
+                  const Color(0xFF9DCEFF),
+                ];
+                if (workoutName.contains("Ab")) {
+                  cardGradients = [
+                    const Color(0xFFEEA4CE),
+                    const Color(0xFFC58BF2),
+                  ];
+                } else if (isCompleted) {
+                  cardGradients = [
+                    const Color(0xFF42D3A5),
+                    const Color(0xFF2AF598),
+                  ];
+                }
+
+                return Positioned(
+                  top: computedTopPosition,
+                  left: 95,
+                  right: 20,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      // ✅ PROFESSIONAL INTERACTION: Triggers dynamic bottom context options menu on tap operations
+                      onTap: () => _showActionSheetMenu(docId, data, isDark),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 12,
                         ),
-                      ],
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: cardGradients),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              workoutName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              "$formattedTimeLabel | $difficulty | $reps | $weight",
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                )
-                .toList(),
-          ),
-          ...tasks.map(
-            (task) => Positioned(
-              top: task.topPosition,
-              left: task.title.contains("Lowerbody")
-                  ? MediaQuery.of(context).size.width * 0.28
-                  : (task.title.contains("Upperbody") ? 95 : null),
-              right: task.title.contains("Ab Workout") ? 20 : null,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _showWorkoutStatusDialog(task, isDark),
-                  borderRadius: BorderRadius.circular(25),
-                  child: _workoutCard(task, isDark),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Helper methods for UI consistency
-  Widget _buildSheetHeader(bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.pop(context),
-          ),
-          const Text(
-            "Add Schedule",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const Icon(Icons.more_horiz),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailTile(
-    IconData icon,
-    String title,
-    String val,
-    bool isDark,
-  ) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : const Color(0xFFF7F8F8),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey, size: 20),
-          const SizedBox(width: 10),
-          Text(title, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          const Spacer(),
-          Text(val, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          const Icon(Icons.chevron_right, color: Colors.grey),
-        ],
-      ),
-    );
-  }
-
-  // Existing UI Widgets (AppBar, FAB, etc.)
-  PreferredSizeWidget _buildAppBar(BuildContext context, bool isDark) {
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      leading: _appBarIconButton(
-        Icons.arrow_back_ios_new,
-        isDark,
-        () => Navigator.pop(context),
-      ),
-      title: Text(
-        "Workout Schedule",
-        style: TextStyle(
-          color: isDark ? Colors.white : Colors.black,
-          fontWeight: FontWeight.bold,
-          fontSize: 18,
-        ),
-      ),
-      centerTitle: true,
-      actions: [
-        PopupMenuButton<String>(
-          onSelected: (value) => _handleMenuAction(value),
-          offset: const Offset(0, 50),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-          color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-          // 🔥 FIXED: Custom widget ki jagah simple Container dein taake conflict na ho
-          child: Container(
-            margin: const EdgeInsets.all(8),
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white10 : const Color(0xFFF7F8F8),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              Icons.more_horiz,
-              color: isDark ? Colors.white : Colors.black,
-              size: 16,
-            ),
-          ),
-          itemBuilder: (context) => [
-            _buildPopupItem("Refresh", Icons.refresh, isDark),
-            _buildPopupItem("Clear All", Icons.delete_outline, isDark),
-            _buildPopupItem("Settings", Icons.settings, isDark),
-          ],
-        ),
-        const SizedBox(width: 10),
-      ],
-    );
-  }
-
-  // 1. Menu Items Design Helper
-  // 1. Popup UI (Same as yours, no UI change)
-  PopupMenuItem<String> _buildPopupItem(
-    String title,
-    IconData icon,
-    bool isDark,
-  ) {
-    return PopupMenuItem(
-      value: title.toLowerCase().replaceAll(' ', '_'),
-      child: Row(
-        children: [
-          Icon(icon, color: isDark ? Colors.white70 : Colors.black54, size: 20),
-          const SizedBox(width: 12),
-          Text(
-            title,
-            style: TextStyle(color: isDark ? Colors.white : Colors.black),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 2. Action Logic (Firebase & Local Sync)
-  // 1. Action Handling Logic
-  void _handleMenuAction(String value) {
-    bool isDark = Theme.of(context).brightness == Brightness.dark;
-
-    if (value == "refresh") {
-      _loadStatuses(); // Firebase se data reload hoga
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Schedule Synced! 🔥")));
-    } else if (value == "clear_all") {
-      _service.clearAllSchedules(); // Service call
-      setState(() {
-        for (var task in tasks) {
-          task.isDone = false;
-        }
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("All tasks cleared! 🗑️")));
-    } else if (value == "settings") {
-      // 🔥 Settings click fix
-      _showSettingsSheet(context, isDark);
-    }
-  }
-
-  // 2. Settings BottomSheet Function
-  void _showSettingsSheet(BuildContext context, bool isDark) {
-    var themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: isDark ? const Color(0xFF1D1B20) : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-      ),
-      builder: (context) {
-        // FutureBuilder use karenge taake local storage se value load ho sake
-        return FutureBuilder<bool>(
-          future: _service.getSettingLocally(
-            'reminders',
-          ), // Service se value mangwao
-          builder: (context, snapshot) {
-            bool reminderValue =
-                snapshot.data ?? true; // Default true agar data na mile
-
-            return StatefulBuilder(
-              builder: (BuildContext context, StateSetter setModalState) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 25,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        "Workout Settings",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-
-                      // 1. Working Reminder Switch
-                      SwitchListTile(
-                        secondary: Icon(
-                          Icons.notifications_active_outlined,
-                          color: isDark ? Colors.white70 : Colors.black87,
-                        ),
-                        title: const Text("Workout Reminders"),
-                        subtitle: const Text(
-                          "Notify me before workout",
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        activeThumbColor: const Color(0xFF92A3FD),
-                        value: reminderValue, // 🔥 FIXED: Variable connected
-                        onChanged: (bool newValue) async {
-                          // A. Local storage aur Firebase mein sync karein
-                          await _service.saveSetting('reminders', newValue);
-
-                          // B. Modal ki UI refresh karein
-                          setModalState(() {
-                            reminderValue = newValue;
-                          });
-                        },
-                      ),
-
-                      // 2. Theme Switch (Already Fixed)
-                      SwitchListTile(
-                        secondary: Icon(
-                          isDark ? Icons.dark_mode : Icons.light_mode,
-                          color: isDark ? Colors.white70 : Colors.black87,
-                        ),
-                        title: const Text("Dark Mode"),
-                        subtitle: Text(
-                          isDark ? "Dark theme ON" : "Light theme ON",
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        activeThumbColor: const Color(0xFFC150F6),
-                        value: isDark,
-                        onChanged: (bool value) {
-                          themeProvider.toggleTheme(
-                            value,
-                          ); // Fixed positional argument
-                          Navigator.pop(context);
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  ),
                 );
-              },
-            );
-          },
+              }),
+            ],
+          ),
         );
       },
     );
   }
 
-  // 1. Month Header (Real-Time)
-  Widget _buildMonthHeader(bool isDark) {
-    // Aaj ki date se month aur year nikalna
-    DateTime now = DateTime.now();
-    List<String> months = [
-      "January",
-      "February",
-      "March",
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-    ];
-    String currentMonthYear = "${months[now.month - 1]} ${now.year}";
+  // ✅ ADVANCED CONTEXT ACTION SHEET: Hosts professional Edit and Delete triggers directly
+  void _showActionSheetMenu(
+    String docId,
+    Map<String, dynamic> currentData,
+    bool isDark,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(25),
+            topRight: Radius.circular(25),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                height: 4,
+                width: 40,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 10),
+              ListTile(
+                leading: const Icon(
+                  Icons.edit_note_rounded,
+                  color: Colors.blueAccent,
+                ),
+                title: const Text(
+                  "Modify Schedule Configurations",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: const Text(
+                  "Change workout categories, target date, times, or metrics reps load",
+                ),
+                onTap: () {
+                  Navigator.pop(context); // Close actions modal sheet
+                  // Routes over to creation interface passing existing dictionary maps parameters safely
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AddScheduleView(
+                        editDocId: docId,
+                        existingData: currentData,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_forever_rounded,
+                  color: Colors.redAccent,
+                ),
+                title: const Text(
+                  "Purge Schedule Permanently",
+                  style: TextStyle(
+                    color: Colors.redAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                subtitle: const Text(
+                  "Ejects this scheduling document entry completely out of the database",
+                ),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _service.deleteWorkoutSchedule(docId);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Schedule removed successfully!"),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              ),
+              const SizedBox(height: 15),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
+  // ✅ DYNAMIC MONTH CHANGERS LAYER: Navigates cleanly across year/month tracks smoothly without hardcoding values
+  Widget _buildMonthHeader(bool isDark) {
+    String monthLabelString = DateFormat(
+      'MMMM yyyy',
+    ).format(_focusedCalendarMonth);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.chevron_left, color: Colors.grey.shade400, size: 20),
+        IconButton(
+          icon: Icon(Icons.chevron_left, color: Colors.grey.shade600),
+          onPressed: () => setState(() {
+            _focusedCalendarMonth = DateTime(
+              _focusedCalendarMonth.year,
+              _focusedCalendarMonth.month - 1,
+              1,
+            );
+            selectedDateIndex =
+                0; // Reset active tab reference to prevent canvas layout overflows
+          }),
+        ),
         const SizedBox(width: 15),
         Text(
-          currentMonthYear, // 🔥 Ab ye real month dikhayega
+          monthLabelString,
           style: TextStyle(
-            color: isDark ? Colors.white70 : Colors.grey.shade600,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.white : Colors.black,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(width: 15),
-        Icon(Icons.chevron_right, color: Colors.grey.shade400, size: 20),
+        IconButton(
+          icon: Icon(Icons.chevron_right, color: Colors.grey.shade600),
+          onPressed: () => setState(() {
+            _focusedCalendarMonth = DateTime(
+              _focusedCalendarMonth.year,
+              _focusedCalendarMonth.month + 1,
+              1,
+            );
+            selectedDateIndex = 0;
+          }),
+        ),
       ],
     );
   }
 
-  // 2. Date Selector (Real-Time 7 Days)
   Widget _buildDateSelector(bool isDark) {
+    DateTime baseDate = DateTime(
+      _focusedCalendarMonth.year,
+      _focusedCalendarMonth.month,
+      1,
+    );
     DateTime today = DateTime.now();
+    bool isCurrentMonth =
+        _focusedCalendarMonth.month == today.month &&
+        _focusedCalendarMonth.year == today.year;
 
-    // Dino ke naam nikalne ke liye list
-    List<String> weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    // Calculates total dynamic horizontal scrolling items based on the active month context constraints parameters
+    int totalScrolledDaysRange = isCurrentMonth
+        ? 14
+        : DateTime(
+            _focusedCalendarMonth.year,
+            _focusedCalendarMonth.month + 1,
+            0,
+          ).day;
 
     return SizedBox(
       height: 90,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: 7, // Agle 7 din
+        itemCount: totalScrolledDaysRange,
         itemBuilder: (context, index) {
-          // Aaj ki date mein index plus karke agla din nikalna
-          DateTime displayDate = today.add(Duration(days: index));
-          String dayName = weekDays[displayDate.weekday - 1];
+          DateTime displayDate = isCurrentMonth
+              ? today.add(Duration(days: index))
+              : baseDate.add(Duration(days: index));
+          String dayName = DateFormat('E').format(displayDate);
           String dayNumber = displayDate.day.toString();
-
           bool isSelected = selectedDateIndex == index;
 
           return GestureDetector(
-            onTap: () {
-              setState(() {
-                selectedDateIndex = index;
-              });
-              // 🔥 Date change hote hi statuses load karein
-              _loadStatuses();
-            },
+            onTap: () => setState(() => selectedDateIndex = index),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
+              duration: const Duration(milliseconds: 250),
               width: 70,
               margin: const EdgeInsets.only(right: 15),
               decoration: BoxDecoration(
@@ -729,9 +455,7 @@ class _WorkoutScheduleViewState extends State<WorkoutScheduleView> {
                       )
                     : null,
                 color: !isSelected
-                    ? (isDark
-                          ? Colors.white.withValues(alpha: 0.05)
-                          : const Color(0xFFF7F8F8))
+                    ? (isDark ? Colors.white10 : const Color(0xFFF7F8F8))
                     : null,
                 borderRadius: BorderRadius.circular(15),
               ),
@@ -739,7 +463,7 @@ class _WorkoutScheduleViewState extends State<WorkoutScheduleView> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    dayName, // Real Day Name
+                    dayName,
                     style: TextStyle(
                       color: isSelected ? Colors.white : Colors.grey,
                       fontSize: 12,
@@ -747,7 +471,7 @@ class _WorkoutScheduleViewState extends State<WorkoutScheduleView> {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    dayNumber, // Real Day Number
+                    dayNumber,
                     style: TextStyle(
                       color: isSelected
                           ? Colors.white
@@ -765,28 +489,189 @@ class _WorkoutScheduleViewState extends State<WorkoutScheduleView> {
     );
   }
 
-  Widget _workoutCard(WorkoutTask task, bool isDark) {
-    bool isLight = task.title.contains("Lowerbody");
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        gradient: isLight ? null : LinearGradient(colors: task.colors),
-        color: isLight
-            ? (isDark
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : const Color(0xFFF7F8F8))
-            : null,
-        borderRadius: BorderRadius.circular(25),
-      ),
-      child: Text(
-        task.title,
+  PreferredSizeWidget _buildAppBar(BuildContext context, bool isDark) {
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      leading: _appBarIconButton(Icons.arrow_back_ios_new, isDark, () {
+        if (Navigator.canPop(context)) Navigator.pop(context);
+      }),
+      title: Text(
+        "Workout Schedule",
         style: TextStyle(
-          color: isLight ? Colors.grey : Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
+          color: isDark ? Colors.white : Colors.black,
+          fontWeight: FontWeight.bold,
+          fontSize: 18,
+          letterSpacing: 0.5,
         ),
       ),
+      centerTitle: true,
+      // ✅ PROFESSIONAL UPGRADE: Added Right-Side Three-Dots Action Matrix
+      actions: [
+        PopupMenuButton<String>(
+          onSelected: (value) => _handleMenuAction(value),
+          offset: const Offset(0, 50),
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+          // Custom beautiful button matching your design system
+          child: Container(
+            margin: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white10 : const Color(0xFFF7F8F8),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.more_horiz_rounded, // Premium looking horizontal dots
+              color: isDark ? Colors.white : Colors.black,
+              size: 18,
+            ),
+          ),
+          itemBuilder: (context) => [
+            _buildPopupItem(
+              "Select Month & Year",
+              Icons.calendar_month_rounded,
+              isDark,
+              "pick_date",
+            ),
+            _buildPopupItem(
+              "Sync Repositories",
+              Icons.refresh_rounded,
+              isDark,
+              "refresh",
+            ),
+            const PopupMenuDivider(height: 1),
+            _buildPopupItem(
+              "Purge All Schedules",
+              Icons.delete_sweep_rounded,
+              isDark,
+              "clear_all",
+            ),
+          ],
+        ),
+        const SizedBox(width: 15), // Stable horizontal padding anchor
+      ],
     );
+  }
+
+  // ✅ HELPER: Renders uniform premium lookup rows inside drop panels
+  PopupMenuItem<String> _buildPopupItem(
+    String title,
+    IconData icon,
+    bool isDark,
+    String valueToken,
+  ) {
+    return PopupMenuItem<String>(
+      value: valueToken,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: valueToken == "clear_all"
+                ? Colors.redAccent
+                : (isDark ? Colors.white70 : Colors.black54),
+            size: 18,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            title,
+            style: TextStyle(
+              color: valueToken == "clear_all"
+                  ? Colors.redAccent
+                  : (isDark ? Colors.white : Colors.black),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ ACTION ENGINE: Handles popup selections seamlessly including dynamic year wheel picker
+  // ✅ FIXED: Standardized action pipeline mapping signatures cleanly
+  void _handleMenuAction(String value) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (value == "pick_date") {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (context) => Container(
+          height: 260,
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF2C2C2E) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  "Navigate Calendar Timeline",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: CupertinoTheme(
+                  data: CupertinoThemeData(
+                    brightness: isDark ? Brightness.dark : Brightness.light,
+                  ),
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.monthYear,
+                    initialDateTime: _focusedCalendarMonth,
+                    minimumYear: 2025,
+                    maximumYear: 2030,
+                    onDateTimeChanged: (DateTime newMonth) {
+                      setState(() {
+                        _focusedCalendarMonth = newMonth;
+                        selectedDateIndex = 0;
+                      });
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        ),
+      );
+    } else if (value == "refresh") {
+      _executeTimelineRefresh(); // ✅ FIXED: Redirected to a distinct non-conflicting explicit call trace
+    } else if (value == "clear_all") {
+      _service.clearAllSchedules();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("All operational history collections wiped! 🗑️"),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  // ✅ FIXED: Renamed signature identifier safely to eliminate unresolved methods errors on build channels
+  Future<void> _executeTimelineRefresh() async {
+    if (mounted) {
+      setState(() {
+        // Triggers the timeline stream registry framework to pull updated snapshot maps straight from Firestore
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Schedule Engine Channels Sync Complete! 🔄"),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.primaryActive,
+        ),
+      );
+    }
   }
 
   Widget _appBarIconButton(IconData icon, bool isDark, VoidCallback onTap) {
@@ -799,11 +684,17 @@ class _WorkoutScheduleViewState extends State<WorkoutScheduleView> {
         decoration: BoxDecoration(
           color: isDark ? Colors.white10 : const Color(0xFFF7F8F8),
           borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.grey.withValues(alpha: 0.05),
+            width: 1,
+          ),
         ),
         child: Icon(
           icon,
           color: isDark ? Colors.white : Colors.black,
-          size: 16,
+          size: 15,
         ),
       ),
     );
@@ -811,22 +702,18 @@ class _WorkoutScheduleViewState extends State<WorkoutScheduleView> {
 
   Widget _buildFAB(BuildContext context, bool isDark) {
     return InkWell(
-      onTap: () => _showAddScheduleSheet(isDark), // FAB connection to Add Page
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const AddScheduleView()),
+      ),
       child: Container(
         height: 60,
         width: 60,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           shape: BoxShape.circle,
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             colors: [Color(0xFF92A3FD), Color(0xFF9DCEFF)],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.blue.withValues(alpha: 0.3),
-              blurRadius: 15,
-              offset: const Offset(0, 8),
-            ),
-          ],
         ),
         child: const Icon(Icons.add, color: Colors.white, size: 30),
       ),
