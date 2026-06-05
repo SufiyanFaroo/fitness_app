@@ -31,28 +31,22 @@ class _MainTabViewState extends State<MainTabView> {
   // Har workout ki live progress track karne ke liye
   Map<String, double> _liveWorkoutProgress = {};
   final FitnessRepository _repo = FitnessRepository();
-  // Repository Instance
   int selectedIndex = 0;
   String selectedPeriod = "Weekly";
-  // 1. Class level par variable (build method se bahar)
-  //int _searchClickCount = 0;
 
   @override
   Widget build(BuildContext context) {
     var themeProvider = Provider.of<ThemeProvider>(context);
     bool isDark = themeProvider.themeMode == ThemeMode.dark;
 
-    // 🔥 PopScope ko sabse upar rakha hai taake back button control ho sake
     return PopScope(
       canPop: false, // Default exit ko rok diya
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
 
-        // Agar user pehle se dashboard (index 0) par nahi hai, toh pehle dashboard par le jayen
         if (selectedIndex != 0) {
           setState(() => selectedIndex = 0);
         } else {
-          // 🔥 Agar dashboard par hi hai, toh professional dialog dikhayen
           _showExitDialog(context, isDark);
         }
       },
